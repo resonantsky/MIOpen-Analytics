@@ -1,0 +1,330 @@
+import os
+import re
+import sys
+import logging
+import socket
+from functools import partial, partialmethod
+from logging.handlers import RotatingFileHandler
+
+# rich imports
+from rich.theme import Theme
+from rich.logging import RichHandler
+from rich.console import Console
+from rich.padding import Padding
+from rich.segment import Segment
+from rich import box
+from rich import print as rprint
+from rich.pretty import install as pretty_install
+from rich.traceback import install as traceback_install
+
+# Global logger and console instances
+log = logging.getLogger("sd")
+console = None
+log_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'sdnext.log') # adjusted path relative to modules/
+hostname = socket.gethostname()
+log_rolled = False
+
+
+def str_to_bool(val: str | bool | None) -> bool | None:
+    if isinstance(val, str):
+        if val.strip() and val.strip().lower() in ("1", "true"):
+            return True
+        return False
+    return val
+
+
+def get_console():
+    return console
+
+
+def get_log():
+    return log
+
+
+def install_traceback(suppress: list | None = None):
+    if suppress is None:
+        suppress = []
+    width = os.environ.get("SD_TRACEWIDTH", console.width if console else None)
+    if width is not None:
+        width = int(width)
+    log.excepthook = traceback_install(
+        console=console,
+        extra_lines=int(os.environ.get("SD_TRACELINES", 1)),
+        max_frames=int(os.environ.get("SD_TRACEFRAMES", 16)),
+        width=width,
+        word_wrap=str_to_bool(os.environ.get("SD_TRACEWRAP", False)),
+        indent_guides=str_to_bool(os.environ.get("SD_TRACEINDENT", False)),
+        show_locals=str_to_bool(os.environ.get("SD_TRACELOCALS", False)),
+        locals_hide_dunder=str_to_bool(os.environ.get("SD_TRACEDUNDER", True)),
+        locals_hide_sunder=str_to_bool(os.environ.get("SD_TRACESUNDER", None)),
+        suppress=suppress,
+    )
+    pretty_install(console=console)
+
+
+
+_log_config = {'debug': False, 'trace': False, 'log_filename': None, 'traceback_panel_patched': False}
+
+def setup_logging(debug=None, trace=None, filename=None):
+    global log_file, console, log_rolled # pylint: disable=global-statement
+
+    def patch_traceback_panel():
+        # Rich traceback always wraps output in Panel; replace only traceback-local Panel with passthrough.
+        if str_to_bool(os.environ.get("SD_TRACEBOX", False)):
+            return
+        try:
+            import rich.traceback as rich_traceback
+            if _log_config['traceback_panel_patched']:
+                return
+
+            def _panel_passthrough(renderable, *args, **kwargs): # pylint: disable=unused-argument
+                return renderable
+
+            rich_traceback.Panel = _panel_passthrough
+            _log_config['traceback_panel_patched'] = True
+        except Exception:
+            pass
+
+    if debug is not None:
+        _log_config['debug'] = debug
+    if trace is not None:
+        _log_config['trace'] = trace
+    if filename is not None:
+        _log_config['log_filename'] = filename
+
+    debug = _log_config['debug']
+    trace = _log_config['trace']
+    log_filename = _log_config['log_filename']
+
+    class RingBuffer(logging.StreamHandler):
+        def __init__(self, capacity):
+            super().__init__()
+            self.capacity = capacity
+            self.buffer = []
+            self.formatter = logging.Formatter('{ "asctime":"%(asctime)s", "created":%(created)f, "facility":"%(name)s", "pid":%(process)d, "tid":%(thread)d, "level":"%(levelname)s", "module":"%(module)s", "func":"%(funcName)s", "msg":"%(message)s" }')
+
+        def strip(self, line):
+            if line is None:
+                return ""
+            ansi_escape = re.compile(r'(\x9B|\x1B\[)[0-?]*[ -/]*[@-~]')
+            return ansi_escape.sub('', str(line))
+
+        def emit(self, record):
+            if record.msg is None:
+                record.msg = ""
+            try:
+                msg = record.getMessage()
+            except Exception:
+                return
+            msg = msg.replace('"', "'")
+            msg = self.strip(msg)
+            try:
+                if '❱ ' in msg: # only last 3 lines of traceback
+                    lines = [l.strip() for l in msg.splitlines() if l.strip() and not l.startswith(' ')]
+                    if len(lines) > 3:
+                        lines = lines[-3:]
+                    lines = [l.replace('│   ', '').strip() for l in lines]
+                    lines.insert(0, 'Exception traceback:')
+                    msg = '\n'.join(lines)
+            except Exception:
+                pass
+            try:
+                if len(msg) > 1024:
+                    msg = msg[:1024] + '...'
+            except Exception:
+                pass
+            record.msg = msg
+            try:
+                formatted = self.format(record)
+                self.buffer.append(formatted)
+            except Exception:
+                pass
+            if len(self.buffer) > self.capacity:
+                self.buffer.pop(0)
+
+        def get(self):
+            return self.buffer
+
+    class FileBuffer(RotatingFileHandler):
+        def __init__(self, filename, maxBytes=32*1024*1024, backupCount=9, encoding='utf-8', delay=True):
+            super().__init__(filename, maxBytes=maxBytes, backupCount=backupCount, encoding=encoding, delay=delay)
+            self.ansi_escape = re.compile(r'(\x9B|\x1B\[)[0-?]*[ -/]*[@-~]')
+            if trace:
+                self.formatter = logging.Formatter('%(asctime)s %(levelname)-8s %(message)s | %(module)s:%(pathname)s:%(lineno)d:%(message)s')
+            else:
+                self.formatter = logging.Formatter('%(asctime)s %(levelname)-8s %(message)s')
+
+        def strip(self, line):
+            if line is None:
+                return ""
+            return self.ansi_escape.sub('', str(line))
+
+        def emit(self, record):
+            record.msg = self.strip(record.msg)
+            super().emit(record)
+
+    class LogFilter(logging.Filter):
+        def __init__(self):
+            super().__init__()
+
+        def filter(self, record):
+            try:
+                return len(record.getMessage()) > 2
+            except Exception:
+                return False
+
+    def override_padding(self, console, options): # pylint: disable=redefined-outer-name
+        style = console.get_style(self.style)
+        width = options.max_width
+        self.left = 0
+        render_options = options.update_width(width - self.left - self.right)
+        if render_options.height is not None:
+            render_options = render_options.update_height(height=render_options.height - self.top - self.bottom)
+        lines = console.render_lines(self.renderable, render_options, style=style, pad=False)
+        _Segment = Segment
+        right = [_Segment.line()]
+        blank_line: list[Segment] | None = None
+        if self.top:
+            blank_line = [_Segment(f'{" " * width}\\n', style)]
+            yield from blank_line * self.top
+        for line in lines: # self.left is forced to 0 above, so no left-padding segment is ever emitted
+            yield from line
+            yield from right
+        if self.bottom:
+            blank_line = blank_line or [_Segment(f'{" " * width}\\n', style)]
+            yield from blank_line * self.bottom
+
+    if log_filename:
+        log_file = log_filename
+
+    logging.TRACE = 25
+    logging.addLevelName(logging.TRACE, 'TRACE')
+    logging.Logger.trace = partialmethod(logging.Logger.log, logging.TRACE)
+    logging.trace = partial(logging.log, logging.TRACE)
+
+    def exception_hook(e: Exception, suppress: list | None = None):
+        from rich.traceback import Traceback
+        if suppress is None:
+            suppress = []
+        tb = Traceback.from_exception(type(e), e, e.__traceback__, show_locals=False, max_frames=16, extra_lines=1, suppress=suppress, theme="ansi_dark", word_wrap=False, width=console.width)
+        # print-to-console, does not get printed-to-file
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        log.excepthook(exc_type, exc_value, exc_traceback)
+        # print-to-file, temporarily disable-console-handler
+        for handler in log.handlers.copy():
+            if isinstance(handler, RichHandler):
+                log.removeHandler(handler)
+        with console.capture() as capture:
+            console.print(tb)
+        log.critical(capture.get())
+        log.addHandler(rh)
+
+    log.traceback = exception_hook
+
+    level = logging.DEBUG if (debug or trace) else logging.INFO
+    log.setLevel(logging.DEBUG) # log to file is always at level debug for facility `sd`
+    log.print = rprint
+
+    # use only the 16 standard ANSI color names (+ dim/bold modifiers) so the theme renders correctly on basic 16-color terminals too
+    theme = Theme({
+        "traceback.border": "black",
+        "inspect.value.border": "black",
+        "traceback.border.syntax_error": "red",
+
+        "logging.level.trace": "dim cyan",
+        "logging.level.debug": "cyan",
+        "logging.level.info": "bright_cyan",
+        "logging.level.warning": "yellow",
+        "logging.level.error": "red",
+        "logging.level.critical": "bold bright_red",
+
+        "repr.attrib_name": "bright_white",
+        "repr.attrib_value": "cyan",
+        "repr.str": "bright_cyan",
+        "repr.none": "yellow",
+        "repr.number": "bright_yellow",
+        "repr.bool_true": "green",
+        "repr.bool_false": "bright_red",
+    })
+
+    Padding.__rich_console__ = override_padding
+    box.ROUNDED = box.SIMPLE
+    patch_traceback_panel()
+    if console is None: # created once: modules bind this name at import time and progress bars must share the console the handler prints on
+        console = Console(
+            log_time=True,
+            log_time_format='%H:%M:%S-%f',
+            tab_size=4,
+            soft_wrap=True,
+            safe_box=True,
+            theme=theme,
+        )
+
+    logging.basicConfig(level=logging.ERROR, format='%(asctime)s | %(name)s | %(levelname)s | %(module)s | %(message)s', handlers=[logging.NullHandler()]) # redirect default logger to null
+
+    pretty_install(console=console)
+    install_traceback()
+
+    while log.hasHandlers() and len(log.handlers) > 0:
+        log.removeHandler(log.handlers[0])
+
+    log_filter = LogFilter()
+    # handlers
+    rh = RichHandler(show_time=True, omit_repeated_times=False, show_level=True, show_path=False, markup=True, rich_tracebacks=True, log_time_format='%H:%M:%S-%f', level=level, console=console)
+    if trace:
+        rh.formatter = logging.Formatter('[%(module)s][%(pathname)s:%(lineno)d]  %(message)s')
+    rh.addFilter(log_filter)
+    rh.setLevel(level)
+    log.addHandler(rh)
+
+    fh = FileBuffer(log_file)
+    fh.addFilter(log_filter)
+    fh.setLevel(logging.DEBUG)
+    log.addHandler(fh)
+
+    if not log_rolled and debug and not log_filename:
+        try:
+            fh.doRollover()
+        except Exception:
+            pass
+        log_rolled = True
+
+    rb = RingBuffer(100) # 100 entries default in log ring buffer
+    rb.addFilter(log_filter)
+    rb.setLevel(level)
+    log.addHandler(rb)
+    log.buffer = rb.buffer
+
+    def quiet_log(quiet: bool=False, *args, **kwargs): # pylint: disable=redefined-outer-name,keyword-arg-before-vararg
+        if not quiet:
+            log.debug(*args, **kwargs)
+    log.quiet = quiet_log
+
+    # overrides
+    logging.getLogger("lycoris").handlers = log.handlers
+    logging.getLogger("ControlNet").handlers = log.handlers
+    logging.getLogger("urllib3").setLevel(logging.ERROR)
+
+    if os.environ.get('SD_DIFFUSERS_DEBUG', None) is not None:
+        logging.getLogger("diffusers").setLevel(logging.DEBUG)
+        logging.getLogger("diffusers.modular_pipelines").setLevel(logging.DEBUG)
+    else:
+        logging.getLogger("diffusers").setLevel(logging.ERROR)
+        logging.getLogger("diffusers.modular_pipelines").setLevel(logging.ERROR)
+    if os.environ.get('SD_TRANSFORMERS_DEBUG', None) is not None:
+        logging.getLogger("transformers").setLevel(logging.DEBUG)
+    else:
+        logging.getLogger("transformers").setLevel(logging.ERROR)
+    if os.environ.get('SD_TORCH_DEBUG', None) is not None:
+        logging.getLogger("torch").setLevel(logging.DEBUG)
+    else:
+        logging.getLogger("torch").setLevel(logging.WARNING)
+
+
+if __name__ == "__main__":
+    setup_logging(debug=True, trace=False, filename=None)
+    for l in [logging.TRACE, logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR, logging.CRITICAL]:
+        log.log(l, f"Test log level: {logging.getLevelName(l)}")
+    values = [None, True, False, "yes", "no", "sd.next", 1, 0, 1.0, [1,2,3], {"key": "value"}, (1,2), {1,2}, object()]
+    for v in values:
+        log.info(f"Test values: {type(v).__name__}={v}")
