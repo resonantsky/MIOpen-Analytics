@@ -7,9 +7,9 @@ import time
 # Benchmark metadata and suite switches
 # -----------------------------------------------------------------------------
 DEVICE = "cuda"
-DTYPE = "float32"
-RUN_CONV1D = True
-RUN_CONV2D = False
+DTYPE = "float16"
+RUN_CONV1D = False
+RUN_CONV2D = True
 RUN_CONV3D = False
 CONV1D_BATCH_SIZE = 128
 CONV1D_CHANNELS = [512, 256, 128, 64, 32]
@@ -107,7 +107,7 @@ def _conv1d_phases(x: torch.Tensor, conv: torch.nn.Conv1d):
     """
     d = conv.dilation[0]
     length, pad = x.shape[-1], conv.padding[0]
-    x = torch.nn.functional.pad(x, (pad, pad))
+    x = torch.nn.functional.pad(x, (pad, pad)) # type: ignore
     # phases must divide evenly; the remainder is padded off the end, so it only ever lands
     # beyond `length` and is dropped by the final slice
     rem = (-x.shape[-1]) % d
@@ -122,50 +122,73 @@ def _conv1d_phases(x: torch.Tensor, conv: torch.nn.Conv1d):
 
 
 def _conv2d_phases(x: torch.Tensor, conv: torch.nn.Conv2d):
-    """Compute a stride-one dilated Conv2d as independent undilated phases."""
-    if conv.stride != (1, 1):
-        raise ValueError("phase-split Conv2d requires stride=1")
+    """Compute a dilated Conv2d with arbitrary stride (including stride=3) as independent undilated phases."""
+    stride_h, stride_w = conv.stride
     dilation_h, dilation_w = conv.dilation
     padding_h, padding_w = conv.padding
     height, width = x.shape[-2:]
-    x = torch.nn.functional.pad(x, (padding_w, padding_w, padding_h, padding_h))
+
+    # 1. Pad input tensor
+    x = torch.nn.functional.pad(x, (padding_w, padding_w, padding_h, padding_h))  # type: ignore
+
+    # 2. Pad remainder to cleanly divide by dilation factors
     rem_h = (-x.shape[-2]) % dilation_h
     rem_w = (-x.shape[-1]) % dilation_w
     if rem_h or rem_w:
         x = torch.nn.functional.pad(x, (0, rem_w, 0, rem_h))
+
     batch, channels, padded_h, padded_w = x.shape
+
+    # 3. Decompose input into polyphase sub-grids
     phases = (
         x.view(batch, channels, padded_h // dilation_h, dilation_h, padded_w // dilation_w, dilation_w)
         .permute(0, 3, 5, 1, 2, 4)
         .reshape(batch * dilation_h * dilation_w, channels, padded_h // dilation_h, padded_w // dilation_w)
     )
+
+    # 4. Standard un-dilated convolution on sub-sampled phases
+    # Note: Stride remains 1 for inner conv because striding is applied on the reconstructed output
     out = torch.nn.functional.conv2d(phases, conv.weight, conv.bias, groups=conv.groups)
-    out_h = height + 2 * padding_h - dilation_h * (conv.kernel_size[0] - 1)
-    out_w = width + 2 * padding_w - dilation_w * (conv.kernel_size[1] - 1)
+
+    # 5. Calculate target output shape following standard PyTorch Conv2d spatial formulas
+    out_h = (height + 2 * padding_h - dilation_h * (conv.kernel_size[0] - 1) - 1) // stride_h + 1 # pyright: ignore[reportOperatorIssue]
+    out_w = (width + 2 * padding_w - dilation_w * (conv.kernel_size[1] - 1) - 1) // stride_w + 1 # pyright: ignore[reportOperatorIssue]
+
     phase_h, phase_w = out.shape[-2:]
     channels_out = conv.weight.shape[0]
+
+    # 6. Reinterlace phase outputs into full spatial grid
     out = (
         out.view(batch, dilation_h, dilation_w, channels_out, phase_h, phase_w)
         .permute(0, 3, 4, 1, 5, 2)
         .reshape(batch, channels_out, phase_h * dilation_h, phase_w * dilation_w)
     )
-    return out[..., :out_h, :out_w]
+
+    # 7. Apply spatial slice matching stride-3 (or arbitrary stride) sub-sampling
+    return out[..., :height + 2 * padding_h - dilation_h * (conv.kernel_size[0] - 1):stride_h,  # pyright: ignore[reportOperatorIssue]
+                    :width + 2 * padding_w - dilation_w * (conv.kernel_size[1] - 1):stride_w] # pyright: ignore[reportOperatorIssue]
 
 
 def _conv3d_phases(x: torch.Tensor, conv: torch.nn.Conv3d):
-    """Compute a stride-one dilated Conv3d as independent undilated phases."""
-    if conv.stride != (1, 1, 1):
-        raise ValueError("phase-split Conv3d requires stride=1")
+    """Compute a dilated Conv3d with arbitrary stride as independent undilated phases."""
+    stride_d, stride_h, stride_w = conv.stride
     dilation_d, dilation_h, dilation_w = conv.dilation
     padding_d, padding_h, padding_w = conv.padding
     depth, height, width = x.shape[-3:]
-    x = torch.nn.functional.pad(x, (padding_w, padding_w, padding_h, padding_h, padding_d, padding_d))
+
+    # 1. Pad input tensor
+    x = torch.nn.functional.pad(x, (padding_w, padding_w, padding_h, padding_h, padding_d, padding_d)) # pyright: ignore[reportArgumentType]
+
+    # 2. Pad remainder to cleanly divide by dilation factors
     rem_d = (-x.shape[-3]) % dilation_d
     rem_h = (-x.shape[-2]) % dilation_h
     rem_w = (-x.shape[-1]) % dilation_w
     if rem_d or rem_h or rem_w:
         x = torch.nn.functional.pad(x, (0, rem_w, 0, rem_h, 0, rem_d))
+
     batch, channels, padded_d, padded_h, padded_w = x.shape
+
+    # 3. Decompose input into polyphase sub-grids across depth, height, and width
     phases = (
         x.view(
             batch,
@@ -180,18 +203,31 @@ def _conv3d_phases(x: torch.Tensor, conv: torch.nn.Conv3d):
         .permute(0, 3, 5, 7, 1, 2, 4, 6)
         .reshape(batch * dilation_d * dilation_h * dilation_w, channels, padded_d // dilation_d, padded_h // dilation_h, padded_w // dilation_w)
     )
+
+    # 4. Standard un-dilated convolution on sub-sampled phases (inner stride remains 1)
     out = torch.nn.functional.conv3d(phases, conv.weight, conv.bias, groups=conv.groups)
-    out_d = depth + 2 * padding_d - dilation_d * (conv.kernel_size[0] - 1)
-    out_h = height + 2 * padding_h - dilation_h * (conv.kernel_size[1] - 1)
-    out_w = width + 2 * padding_w - dilation_w * (conv.kernel_size[2] - 1)
+
+    # 5. Calculate target output shape following standard PyTorch Conv3d spatial formulas
+    out_d = (depth + 2 * padding_d - dilation_d * (conv.kernel_size[0] - 1) - 1) // stride_d + 1
+    out_h = (height + 2 * padding_h - dilation_h * (conv.kernel_size[1] - 1) - 1) // stride_h + 1
+    out_w = (width + 2 * padding_w - dilation_w * (conv.kernel_size[2] - 1) - 1) // stride_w + 1
+
     phase_d, phase_h, phase_w = out.shape[-3:]
     channels_out = conv.weight.shape[0]
+
+    # 6. Reinterlace phase outputs into full spatial grid
     out = (
         out.view(batch, dilation_d, dilation_h, dilation_w, channels_out, phase_d, phase_h, phase_w)
         .permute(0, 4, 5, 1, 6, 2, 7, 3)
         .reshape(batch, channels_out, phase_d * dilation_d, phase_h * dilation_h, phase_w * dilation_w)
     )
-    return out[..., :out_d, :out_h, :out_w]
+
+    # 7. Compute full un-strided dimensions and apply strided slicing
+    full_d = depth + 2 * padding_d - dilation_d * (conv.kernel_size[0] - 1)
+    full_h = height + 2 * padding_h - dilation_h * (conv.kernel_size[1] - 1)
+    full_w = width + 2 * padding_w - dilation_w * (conv.kernel_size[2] - 1)
+
+    return out[..., :full_d:stride_d, :full_h:stride_h, :full_w:stride_w]
 
 def conv1d_dilated(x: torch.Tensor, conv: torch.nn.Conv1d):
     """Dilated conv1d, via whichever path is actually faster on this device.
