@@ -40,7 +40,6 @@ CONV3D_CONFIGS = [
 # -----------------------------------------------------------------------------
 # MIOpen Environment Setup (must precede the Torch import)
 # -----------------------------------------------------------------------------
-os.environ["HSA_OVERRIDE_GFX_VERSION"] = "10.3.0"
 os.environ["MIOPEN_FIND_MODE"] = "2"
 os.environ["MIOPEN_FIND_ENFORCE"] = "1"
 os.environ["ROCBLAS_LAYER"] = "0"

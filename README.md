@@ -1,5 +1,28 @@
 # AMD ROCm MIOpen Analytics Platform
+
 # ROCm & PyTorch Performance & Package Comparison
+
+## Run a stable/nightly comparison
+
+Run `python MIOpen-Check.py` and enter a supported GFX architecture (the package name
+`amd-torch-device-gfx...` is also accepted). The runner creates `venv-stable` and
+`venv-nightly`, installs the requirements from the corresponding AMD repository, runs the
+normal benchmark in each environment, and writes `stable-results.txt`,
+`nightly-results.txt`, and `comparison.md` in the repository root.
+Shared Python dependencies are installed from PyPI; ROCm and PyTorch packages are
+resolved independently from each repository's PyTorch and core wheel indexes so
+their versions match that channel.
+For stable runs on gfx1010–gfx1012 and gfx1030–gfx1036, the runner pins Torch and ROCm
+packages to the available ROCm 10.0.0 builds. Nightly runs remain unpinned and install
+the latest available packages.
+When `uv` is available, it handles installation with a concise progress display; otherwise
+the runner falls back to pip. Benchmark output is streamed to the terminal and recorded
+in each results file. At completion, the runner prints matched stable/nightly total and
+average latency and a pip install command for the lower-average environment.
+
+Use `python MIOpen-Check.py --mode verbose` to capture the verbose benchmark instead.
+Both environments are installed from the stable and nightly AMD wheel indexes,
+respectively.
 
 ## 1. Package Version Differences (`pip list`)
 
