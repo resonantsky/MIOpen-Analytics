@@ -18,7 +18,7 @@ A pip recommendation is shown only when both environments pass torchvision CPU/G
 
 Before prompting, the selector checks all architectures against the stable and nightly indexes for the current Python and platform. 
 
-Benchmark output is streamed to the terminal and rcodd in each results file. At completion, the runner prints matched stable/nightly total and average latency and, when torchvision validation succeeds, a pip install command for the lower-average environment.
+Benchmark output is streamed to the terminal and recorded in each results file. At completion, the runner prints matched stable/nightly total and average latency and, when torchvision validation succeeds, a pip install command for the lower-average environment.
 
 Use `python MIOpen-Check.py --mode verbose` to capture the verbose benchmark instead. Both environments are installed from the stable and nightly AMD wheel indexes, respectively.
 
