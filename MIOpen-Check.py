@@ -270,7 +270,7 @@ def architecture_wheel_status(
 
 
 def print_supported_architectures() -> None:
-    print("Supported architectures:")
+    lines = ["Supported architectures:"]
     groups = ("gfx10", "gfx11", "gfx12", "gfx9")
     for prefix in groups:
         architectures = tuple(
@@ -279,7 +279,8 @@ def print_supported_architectures() -> None:
             if architecture.startswith(prefix)
         )
         if architectures:
-            print(f"  {prefix}: " + ", ".join(architectures))
+            lines.append(f"  {prefix}: " + ", ".join(architectures))
+    print("\n".join(lines), flush=True)
 
 
 def print_architecture_wheel_status(
@@ -299,11 +300,6 @@ def print_architecture_wheel_status(
             "unknown": (yellow, "CHECK UNKNOWN"),
         }[status]
         print(f"  {color}{architecture:<8} {label}{reset}")
-    print(
-        f"{green}OK{reset} = all required packages found; "
-        f"{red}MISSING{reset} = one or more unavailable; "
-        f"{yellow}UNKNOWN{reset} = index check failed."
-    )
 
 
 def architecture_warning(

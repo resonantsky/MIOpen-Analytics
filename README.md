@@ -16,9 +16,9 @@ Nightly runs remain unpinned and install the latest available packages. The benc
 
 A pip recommendation is shown only when both environments pass torchvision CPU/GPU NMS checks and the selected package inventory includes those matching packages.
 
-Before prompting, the selector checks all architectures against the stable and nightly indexes for the current Python and platform. Green means every required AMD package has a compatible artifact (wheel, or the ROCm source archive where applicable); red means at least one is unavailable; yellow means an index could not be checked.
+Before prompting, the selector checks all architectures against the stable and nightly indexes for the current Python and platform. 
 
-The check is informational and does not disable choices or claim that a GPU runtime test passed. When `uv` is available, it handles installation with a concise progress display; otherwise the runner falls back to pip. Benchmark output is streamed to the terminal and rcodd in each results file. At completion, the runner prints matched stable/nightly total and average latency and, when torchvision validation succeeds, a pip install command for the lower-average environment.
+Benchmark output is streamed to the terminal and rcodd in each results file. At completion, the runner prints matched stable/nightly total and average latency and, when torchvision validation succeeds, a pip install command for the lower-average environment.
 
 Use `python MIOpen-Check.py --mode verbose` to capture the verbose benchmark instead. Both environments are installed from the stable and nightly AMD wheel indexes, respectively.
 
