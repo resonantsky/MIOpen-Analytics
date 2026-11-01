@@ -821,6 +821,10 @@ def main() -> None:
         )
         metrics = comparison_generator.aggregate_metrics(stable_results, nightly_results)
         torchvision_validation = {}
+        cyan = "\033[36m"
+        reset = "\033[0m"
+        print(f"\n{cyan}{'=' * 78}{reset}")
+        print(f"{cyan}Torchvision validation{reset}")
         for name, python in (
             ("stable", stable_python),
             ("nightly", nightly_python),
@@ -833,6 +837,7 @@ def main() -> None:
                 f"{'PASS' if passed else 'FAILED'} - {detail}\033[0m",
                 flush=True,
             )
+        print(f"{cyan}{'=' * 78}{reset}", flush=True)
         preferred = (
             "stable"
             if metrics["stable_average"] <= metrics["nightly_average"]

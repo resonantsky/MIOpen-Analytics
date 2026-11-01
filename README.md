@@ -1,4 +1,4 @@
-# AMD ROCm MIOpen Analytics Platform
+# AMD ROCm MIOpen Analytics Platform for Windows ROCm
 
 # ROCm & PyTorch Performance & Package Comparison
 
