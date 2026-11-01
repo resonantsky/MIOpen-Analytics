@@ -17,7 +17,12 @@ their versions match that channel.
 For stable runs on gfx1010–gfx1012 and gfx1030–gfx1036, the runner pins Torch and ROCm
 packages to the available ROCm 10.0.0 builds. Nightly runs remain unpinned and install
 the latest available packages.
-
+Before prompting, the selector checks all architectures against the stable and nightly
+indexes for the current Python and platform. Green means every required AMD package has
+a compatible artifact (wheel, or the ROCm source archive where applicable); red means at
+least one is unavailable; yellow means an index could not be checked.
+The check is informational and does not disable choices or claim that a GPU runtime test
+passed.
 When `uv` is available, it handles installation with a concise progress display; otherwise
 the runner falls back to pip. Benchmark output is streamed to the terminal and recorded
 in each results file. At completion, the runner prints matched stable/nightly total and

@@ -2,13 +2,20 @@
 """Install stable/nightly ROCm environments and compare their MIOpen benchmarks."""
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
+from html.parser import HTMLParser
 import re
 import shutil
 import subprocess
 import sys
+import sysconfig
 import tempfile
+from urllib.error import HTTPError, URLError
+from urllib.parse import unquote
+from urllib.request import Request, urlopen
 from pathlib import Path
-from typing import Mapping, Optional, Union
+from typing import Dict, Mapping, Optional, Tuple, Union
 
 import comparison_generator
 
@@ -87,6 +94,24 @@ AMD_PACKAGE_NAMES = {
     "rocm-sdk-libraries",
 }
 UV_EXECUTABLE = shutil.which("uv")
+WHEEL_CHECK_TIMEOUT = 12
+
+
+@dataclass(frozen=True)
+class WheelProbe:
+    available: Optional[bool]
+    detail: str
+    versions: Tuple[str, ...] = ()
+
+
+class _WheelLinkParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.links = []
+
+    def handle_starttag(self, tag, attrs) -> None:
+        if tag == "a":
+            self.links.extend(value for key, value in attrs if key == "href")
 
 
 def parse_architecture(value: str) -> str:
@@ -98,6 +123,251 @@ def parse_architecture(value: str) -> str:
         choices = ", ".join(ARCHITECTURES)
         raise ValueError(f"Unsupported architecture {value!r}. Choose one of: {choices}")
     return architecture
+
+
+def _wheel_matches_runtime(filename: str) -> Tuple[bool, Optional[str]]:
+    try:
+        prefix, python_tag, abi_tag, platform_tag = filename[:-4].rsplit("-", 3)
+        _, version = prefix.rsplit("-", 1)
+    except ValueError:
+        return False, None
+
+    major, minor = sys.version_info[:2]
+    python_tags = set(python_tag.split("."))
+    supported_python_tags = {f"py{major}", f"py{major}{minor}", "py3"}
+    if sys.implementation.name == "cpython":
+        supported_python_tags.add(f"cp{major}{minor}")
+    if not python_tags.intersection(supported_python_tags):
+        return False, None
+
+    abi_tags = set(abi_tag.split("."))
+    supported_abi_tags = {"none", "abi3"}
+    if sys.implementation.name == "cpython":
+        supported_abi_tags.add(f"cp{major}{minor}")
+    if not abi_tags.intersection(supported_abi_tags):
+        return False, None
+
+    runtime_platform = sysconfig.get_platform().lower().replace("-", "_")
+    platform_tags = set(platform_tag.lower().split("."))
+    if "any" not in platform_tags and runtime_platform not in platform_tags:
+        return False, None
+    return True, unquote(version)
+
+
+def _probe_package_artifact(
+    index_url: str, package: str, required_version: Optional[str]
+) -> WheelProbe:
+    url = f"{index_url}/{package}/"
+    request = Request(url, headers={"Accept": "text/html"})
+    try:
+        with urlopen(request, timeout=WHEEL_CHECK_TIMEOUT) as response:
+            page = response.read().decode("utf-8", errors="replace")
+    except HTTPError as error:
+        if error.code == 404:
+            return WheelProbe(False, "package not published")
+        return WheelProbe(None, f"index returned HTTP {error.code}")
+    except (URLError, TimeoutError, OSError) as error:
+        return WheelProbe(None, f"index check failed: {error}")
+
+    parser = _WheelLinkParser()
+    parser.feed(page)
+    versions = set()
+    has_source_distribution = False
+    for link in parser.links:
+        filename = unquote(link.split("#", 1)[0].split("?", 1)[0]).rsplit("/", 1)[-1]
+        if package == "rocm" and filename.endswith(".tar.gz"):
+            version_prefix = f"{package}-"
+            if filename.startswith(version_prefix):
+                versions.add(filename[len(version_prefix) : -len(".tar.gz")])
+                has_source_distribution = True
+            continue
+        if not filename.endswith(".whl"):
+            continue
+        compatible, version = _wheel_matches_runtime(filename)
+        if compatible and version is not None:
+            versions.add(version)
+
+    if required_version is not None:
+        if required_version in versions:
+            detail = (
+                f"source distribution {required_version} available"
+                if package == "rocm" and has_source_distribution
+                else f"wheel version {required_version} available"
+            )
+            return WheelProbe(True, detail, (required_version,))
+        return WheelProbe(
+            False,
+            f"required version {required_version} has no compatible wheel",
+            tuple(sorted(versions)),
+        )
+    if versions:
+        detail = (
+            "source distribution available"
+            if package == "rocm" and has_source_distribution
+            else "compatible wheel available"
+        )
+        return WheelProbe(True, detail, tuple(sorted(versions)))
+    return WheelProbe(False, "no compatible wheel published for this Python/platform")
+
+
+def check_architecture_wheels() -> Dict[str, Dict[Tuple[str, str], WheelProbe]]:
+    queries = {}
+    architecture_queries = {architecture: [] for architecture in ARCHITECTURES}
+    for architecture in ARCHITECTURES:
+        _, amd_requirements = requirements_for_architecture(architecture)
+        stable_constraints = stable_runtime_constraints(architecture)
+        constrained_versions = {}
+        if stable_constraints:
+            for line in stable_constraints.splitlines():
+                match = re.fullmatch(r"\s*([A-Za-z0-9][A-Za-z0-9._-]*)==(.+)\s*", line)
+                if match:
+                    constrained_versions[match.group(1).lower()] = match.group(2)
+
+        for channel in ("stable", "nightly"):
+            for line in amd_requirements.splitlines():
+                package = line.strip().lower()
+                index_kind = "core" if package.startswith("rocm") else "pytorch"
+                required_version = (
+                    constrained_versions.get(package) if channel == "stable" else None
+                )
+                key = (channel, package, required_version)
+                index_url = REPOSITORIES[channel][index_kind]
+                queries[key] = (index_url, package, required_version)
+                architecture_queries[architecture].append(key)
+
+    results = {}
+    print(
+        f"Checking required AMD package artifacts for Python {sys.version_info.major}."
+        f"{sys.version_info.minor} ({sysconfig.get_platform()})...",
+        flush=True,
+    )
+    with ThreadPoolExecutor(max_workers=16) as executor:
+        futures = {
+            executor.submit(_probe_package_artifact, *query): key
+            for key, query in queries.items()
+        }
+        for future in as_completed(futures):
+            results[futures[future]] = future.result()
+
+    return {
+        architecture: {
+            (key[0], key[1]): results[key]
+            for key in architecture_queries[architecture]
+        }
+        for architecture in ARCHITECTURES
+    }
+
+
+def architecture_wheel_status(
+    probes: Mapping[Tuple[str, str], WheelProbe]
+) -> str:
+    availability = [probe.available for probe in probes.values()]
+    if all(value is True for value in availability):
+        return "available"
+    if any(value is False for value in availability):
+        return "missing"
+    return "unknown"
+
+
+def print_architecture_wheel_status(
+    availability: Mapping[str, Mapping[Tuple[str, str], WheelProbe]]
+) -> None:
+    green = "\033[92m"
+    red = "\033[91m"
+    yellow = "\033[93m"
+    dim = "\033[2m"
+    reset = "\033[0m"
+
+    print(
+        "AMD package availability by architecture "
+        f"({dim}checks compatible wheels and the ROCm source archive in stable and nightly "
+        f"indexes for this Python/platform{reset}):"
+    )
+    for architecture, probes in availability.items():
+        status = architecture_wheel_status(probes)
+        color, label = {
+            "available": (green, "PACKAGE SET OK"),
+            "missing": (red, "PACKAGES MISSING"),
+            "unknown": (yellow, "CHECK UNKNOWN"),
+        }[status]
+        torch_status = []
+        for channel in ("stable", "nightly"):
+            target_probe = probes.get((channel, f"amd-torch-device-{architecture}"))
+            target_label = (
+                "Torch OK"
+                if target_probe is not None and target_probe.available is True
+                else "Torch unknown"
+                if target_probe is not None and target_probe.available is None
+                else "Torch missing"
+            )
+            sdk_probe = probes.get((channel, f"rocm-sdk-device-{architecture}"))
+            sdk_label = (
+                "SDK OK"
+                if sdk_probe is not None and sdk_probe.available is True
+                else "SDK unknown"
+                if sdk_probe is not None and sdk_probe.available is None
+                else "SDK missing"
+            )
+            torch_status.append(f"{channel}: {target_label}, {sdk_label}")
+        details = [
+            f"{channel} {package}: {probe.detail}"
+            for (channel, package), probe in probes.items()
+            if probe.available is False
+        ]
+        details.extend(
+            f"{channel} {package}: {probe.detail}"
+            for (channel, package), probe in probes.items()
+            if probe.available is None
+        )
+        suffix = f" - {'; '.join(details[:3])}" if details else ""
+        if len(details) > 3:
+            suffix += f"; and {len(details) - 3} more"
+        print(
+            f"  {color}{architecture:<8} [{label}]{reset} "
+            + " | ".join(torch_status)
+            + suffix
+        )
+    print(
+        f"{green}Green{reset}: required packages found. "
+        f"{red}Red{reset}: one or more are missing. "
+        f"{yellow}Yellow{reset}: index could not be checked."
+    )
+    print(
+        f"{dim}This is package availability, not an official hardware support "
+        f"or runtime test. No architectures are disabled.{reset}"
+    )
+
+
+def architecture_warning(
+    architecture: str,
+    probes: Mapping[Tuple[str, str], WheelProbe],
+) -> Optional[str]:
+    status = architecture_wheel_status(probes)
+    if status == "available":
+        return None
+
+    unavailable = []
+    uncertain = []
+    for (channel, package), probe in probes.items():
+        if probe.available is False:
+            unavailable.append(f"{channel} {package}: {probe.detail}")
+        elif probe.available is None:
+            uncertain.append(f"{channel} {package}: {probe.detail}")
+    if unavailable:
+        detail = "; ".join(unavailable[:5])
+        if len(unavailable) > 5:
+            detail += f"; and {len(unavailable) - 5} more"
+        return (
+            f"Some required package artifacts for {architecture} are missing for this "
+            f"Python/platform: {detail}. Installation may fail."
+        )
+    detail = "; ".join(uncertain[:5])
+    if len(uncertain) > 5:
+        detail += f"; and {len(uncertain) - 5} more"
+    return (
+        f"Package availability for {architecture} could not be fully checked: "
+        f"{detail}. Continuing without disabling the architecture."
+    )
 
 
 def stable_runtime_constraints(architecture: str) -> Optional[str]:
@@ -380,10 +650,20 @@ def main() -> None:
         flush=True,
     )
     print("Supported architectures: " + ", ".join(ARCHITECTURES))
+    wheel_availability = check_architecture_wheels()
+    print_architecture_wheel_status(wheel_availability)
     try:
         architecture = parse_architecture(
             input("Enter the GFX architecture (for example, gfx1030): ")
         )
+        warning = architecture_warning(
+            architecture, wheel_availability[architecture]
+        )
+        if warning is not None:
+            warning_color = "\033[91m" if architecture_wheel_status(
+                wheel_availability[architecture]
+            ) == "missing" else "\033[93m"
+            print(f"{warning_color}Warning: {warning}\033[0m", flush=True)
         common, amd = requirements_for_architecture(architecture)
     except ValueError as error:
         parser.error(str(error))
