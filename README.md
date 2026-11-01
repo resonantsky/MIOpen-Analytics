@@ -24,51 +24,309 @@ Use `python MIOpen-Check.py --mode verbose` to capture the verbose benchmark ins
 Both environments are installed from the stable and nightly AMD wheel indexes,
 respectively.
 
-## 1. Package Version Differences (`pip list`)
+Example output:
+```shell
+➜ python .\MIOpen-Check.py
+Package installer: uv
+Supported architectures: gfx1010, gfx1011, gfx1012, gfx1030, gfx1031, gfx1032, gfx1033, gfx1034, gfx1035, gfx1036, gfx1100, gfx1101, gfx1102, gfx1103, gfx110x, gfx1150, gfx1151, gfx1152, gfx1153, gfx115x, gfx12-0, gfx1200, gfx1201, gfx1250, gfx900, gfx906, gfx908, gfx90a, gfx90c, gfx942, gfx950
+Enter the GFX architecture (for example, gfx1030): gfx1030
+Pinning stable ROCm packages to 10.0.0 for gfx1030
+Installing stable requirements for gfx1030
+Using Python 3.12.9 environment at: venv-stable
+Audited 14 packages in 6ms
+Using Python 3.12.9 environment at: venv-stable
+Audited 9 packages in 7ms
+Installing nightly requirements for gfx1030
+Using Python 3.12.9 environment at: venv-nightly
+Audited 14 packages in 5ms
+Using Python 3.12.9 environment at: venv-nightly
+Audited 9 packages in 7ms
+Running stable normal benchmark; recording stable-results.txt
 
-| Package / Environment | Document 1 (`test1.txt`) | Document 2 (`test2.txt`) | Notes |
-| --- | --- | --- | --- |
-| `torch` | `2.13.0+rocm10.0.0` | `2.16.0a0+rocm10.3.0a20261031` | Doc 2 running newer dev build |
-| `torchaudio` | `2.11.0.3+rocm10.1.0` | `2.11.1+rocm10.3.0a20261031` | Updated patch & ROCm alignment |
-| `torchvision` | `0.28.0+rocm10.0.0` | `0.30.0a0+rocm10.3.0a20261031` | Doc 2 running newer dev build |
-| `rocm` | `10.0.0` | `10.3.0a20261031` | ROCm core stack upgraded |
-| `rocm-sdk-devel` | `10.2.0a20260926` | `10.3.0a20261031` | Build environment upgraded |
-| `amd-torch-device-gfx1030` | `2.13.0+rocm10.0.0` | `2.16.0a0+rocm10.3.0a20261031` | Matching PyTorch build target |
-| `amd-torchvision-device-gfx1030` | *Not present* | `0.30.0a0+rocm10.3.0a20261031` | Added in Doc 2 environment |
+=== Stable benchmark output (also saved to stable-results.txt) ===
+==============================================================================
+conv2d ch256-k(3, 3)-d(1, 1)-0
+native: miopen torch
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   3.925 ms
+phased included
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   4.379 ms
+  Torch / included   0.90x
+==============================================================================
+conv2d ch256-k(3, 3)-d(2, 2)-1
+native: miopen torch
+  Algorithm          GemmFwdRest
+  Measured latency   8.532 ms
+phased included
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   4.994 ms
+  Torch / included   1.71x
+==============================================================================
+conv2d ch256-k(3, 3)-d(3, 3)-2
+native: miopen torch
+  Algorithm          GemmFwdRest
+  Measured latency   8.740 ms
+phased included
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   6.105 ms
+  Torch / included   1.43x
+==============================================================================
+conv2d ch256-k(5, 5)-d(1, 1)-0
+native: miopen torch
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   13.631 ms
+phased included
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   14.269 ms
+  Torch / included   0.96x
+==============================================================================
+conv2d ch256-k(5, 5)-d(2, 2)-1
+native: miopen torch
+  Algorithm          GemmFwdRest
+  Measured latency   23.180 ms
+phased included
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   15.091 ms
+  Torch / included   1.54x
+==============================================================================
+conv2d ch128-k(3, 3)-d(1, 1)-0
+native: miopen torch
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   1.701 ms
+phased included
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   1.736 ms
+  Torch / included   0.98x
+==============================================================================
+conv2d ch128-k(3, 3)-d(2, 2)-1
+native: miopen torch
+  Algorithm          GemmFwdRest
+  Measured latency   3.659 ms
+phased included
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   2.198 ms
+  Torch / included   1.66x
+==============================================================================
+conv2d ch128-k(3, 3)-d(3, 3)-2
+native: miopen torch
+  Algorithm          GemmFwdRest
+  Measured latency   3.620 ms
+phased included
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   2.558 ms
+  Torch / included   1.41x
+==============================================================================
+conv2d ch128-k(5, 5)-d(1, 1)-0
+native: miopen torch
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   3.680 ms
+phased included
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   4.148 ms
+  Torch / included   0.89x
+==============================================================================
+conv2d ch128-k(5, 5)-d(2, 2)-1
+native: miopen torch
+  Algorithm          GemmFwdRest
+  Measured latency   7.269 ms
+phased included
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   4.575 ms
+  Torch / included   1.59x
+==============================================================================
+conv2d ch64-k(3, 3)-d(1, 1)-0
+native: miopen torch
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   0.885 ms
+phased included
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   1.049 ms
+  Torch / included   0.84x
+==============================================================================
+conv2d ch64-k(3, 3)-d(2, 2)-1
+native: miopen torch
+  Algorithm          GemmFwdRest
+  Measured latency   2.232 ms
+phased included
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   1.277 ms
+  Torch / included   1.75x
+==============================================================================
+conv2d ch64-k(3, 3)-d(3, 3)-2
+native: miopen torch
+  Algorithm          GemmFwdRest
+  Measured latency   2.383 ms
+phased included
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   1.517 ms
+  Torch / included   1.57x
+==============================================================================
+conv2d ch64-k(5, 5)-d(1, 1)-0
+native: miopen torch
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   1.534 ms
+phased included
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   1.703 ms
+  Torch / included   0.90x
+==============================================================================
+conv2d ch64-k(5, 5)-d(2, 2)-1
+native: miopen torch
+  Algorithm          GemmFwdRest
+  Measured latency   4.036 ms
+phased included
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   1.959 ms
+  Torch / included   2.06x
+Running nightly normal benchmark; recording nightly-results.txt
 
----
+=== Nightly benchmark output (also saved to nightly-results.txt) ===
+==============================================================================
+conv2d ch256-k(3, 3)-d(1, 1)-0
+native: miopen torch
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   3.744 ms
+phased included
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   4.383 ms
+  Torch / included   0.85x
+==============================================================================
+conv2d ch256-k(3, 3)-d(2, 2)-1
+native: miopen torch
+  Algorithm          GemmFwdRest
+  Measured latency   8.335 ms
+phased included
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   5.016 ms
+  Torch / included   1.66x
+==============================================================================
+conv2d ch256-k(3, 3)-d(3, 3)-2
+native: miopen torch
+  Algorithm          GemmFwdRest
+  Measured latency   8.618 ms
+phased included
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   5.834 ms
+  Torch / included   1.48x
+==============================================================================
+conv2d ch256-k(5, 5)-d(1, 1)-0
+native: miopen torch
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   13.562 ms
+phased included
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   14.033 ms
+  Torch / included   0.97x
+==============================================================================
+conv2d ch256-k(5, 5)-d(2, 2)-1
+native: miopen torch
+  Algorithm          GemmFwdRest
+  Measured latency   22.937 ms
+phased included
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   15.014 ms
+  Torch / included   1.53x
+==============================================================================
+conv2d ch128-k(3, 3)-d(1, 1)-0
+native: miopen torch
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   1.580 ms
+phased included
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   1.742 ms
+  Torch / included   0.91x
+==============================================================================
+conv2d ch128-k(3, 3)-d(2, 2)-1
+native: miopen torch
+  Algorithm          GemmFwdRest
+  Measured latency   3.446 ms
+phased included
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   2.294 ms
+  Torch / included   1.50x
+==============================================================================
+conv2d ch128-k(3, 3)-d(3, 3)-2
+native: miopen torch
+  Algorithm          GemmFwdRest
+  Measured latency   3.637 ms
+phased included
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   2.532 ms
+  Torch / included   1.44x
+==============================================================================
+conv2d ch128-k(5, 5)-d(1, 1)-0
+native: miopen torch
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   3.492 ms
+phased included
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   3.989 ms
+  Torch / included   0.88x
+==============================================================================
+conv2d ch128-k(5, 5)-d(2, 2)-1
+native: miopen torch
+  Algorithm          GemmFwdRest
+  Measured latency   6.710 ms
+phased included
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   4.384 ms
+  Torch / included   1.53x
+==============================================================================
+conv2d ch64-k(3, 3)-d(1, 1)-0
+native: miopen torch
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   1.030 ms
+phased included
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   1.100 ms
+  Torch / included   0.94x
+==============================================================================
+conv2d ch64-k(3, 3)-d(2, 2)-1
+native: miopen torch
+  Algorithm          GemmFwdRest
+  Measured latency   2.305 ms
+phased included
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   1.275 ms
+  Torch / included   1.81x
+==============================================================================
+conv2d ch64-k(3, 3)-d(3, 3)-2
+native: miopen torch
+  Algorithm          GemmFwdRest
+  Measured latency   2.291 ms
+phased included
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   1.507 ms
+  Torch / included   1.52x
+==============================================================================
+conv2d ch64-k(5, 5)-d(1, 1)-0
+native: miopen torch
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   1.499 ms
+phased included
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   1.715 ms
+  Torch / included   0.87x
+==============================================================================
+conv2d ch64-k(5, 5)-d(2, 2)-1
+native: miopen torch
+  Algorithm          GemmFwdRest
+  Measured latency   3.793 ms
+phased included
+  Algorithm          ConvBinWinogradRxSf2x3g1
+  Measured latency   1.910 ms
+  Torch / included   1.99x
 
-## 2. Solver Latency Comparison (Native MIOpen Torch)
+==============================================================================
+Stable / nightly benchmark summary
+  Matched configurations 15
+  Stable total / average   89.007 ms / 5.934 ms
+  Nightly total / average  86.979 ms / 5.799 ms
+  Preferred packages       nightly
+  Comparison report        E:\ROCm-Check\comparison.md
 
-Below is the side-by-side native measured latency across all 15 convolution configurations:
-
-| Benchmark Config | Doc 1 Latency (ms) | Doc 2 Run 1 (ms) | Doc 2 Run 2 (ms) | Doc 2 Avg (ms) | Net Diff (Avg) |
-| --- | --- | --- | --- | --- | --- |
-| `ch256-k(3,3)-d(1,1)-0` | 3.813 | 3.754 | 3.739 | 3.747 | \-0.066 ms (-1.73%) |
-| `ch256-k(3,3)-d(2,2)-1` | 8.430 | 8.134 | 8.178 | 8.156 | \-0.274 ms (-3.25%) |
-| `ch256-k(3,3)-d(3,3)-2` | 8.451 | 8.370 | 8.405 | 8.388 | \-0.063 ms (-0.75%) |
-| `ch256-k(5,5)-d(1,1)-0` | 13.371 | 12.742 | 13.178 | 12.960 | \-0.411 ms (-3.07%) |
-| `ch256-k(5,5)-d(2,2)-1` | 22.739 | 20.923 | 22.480 | 21.702 | \-1.037 ms (-4.56%) |
-| `ch128-k(3,3)-d(1,1)-0` | 1.477 | 1.475 | 1.539 | 1.507 | +0.030 ms (+2.03%) |
-| `ch128-k(3,3)-d(2,2)-1` | 3.435 | 3.268 | 3.257 | 3.263 | \-0.172 ms (-5.01%) |
-| `ch128-k(3,3)-d(3,3)-2` | 3.492 | 3.303 | 3.324 | 3.314 | \-0.178 ms (-5.10%) |
-| `ch128-k(5,5)-d(1,1)-0` | 3.613 | 3.544 | 3.514 | 3.529 | \-0.084 ms (-2.32%) |
-| `ch128-k(5,5)-d(2,2)-1` | 7.058 | 6.655 | 6.633 | 6.644 | \-0.414 ms (-5.87%) |
-| `ch64-k(3,3)-d(1,1)-0` | 0.935 | 0.945 | 0.953 | 0.949 | +0.014 ms (+1.50%) |
-| `ch64-k(3,3)-d(2,2)-1` | 2.272 | 2.227 | 2.150 | 2.189 | \-0.083 ms (-3.65%) |
-| `ch64-k(3,3)-d(3,3)-2` | 2.217 | 2.231 | 2.227 | 2.229 | +0.012 ms (+0.54%) |
-| `ch64-k(5,5)-d(1,1)-0` | 1.380 | 1.457 | 1.413 | 1.435 | +0.055 ms (+3.99%) |
-| `ch64-k(5,5)-d(2,2)-1` | 3.857 | 3.789 | 3.817 | 3.803 | \-0.054 ms (-1.40%) |
-| **TOTAL** | **86.545 ms** | **82.817 ms** | **84.807 ms** | **83.812 ms** | **-2.733 ms (-3.16%)** |
-
----
-
-## 3. Findings & Calculated Percentage Gain
-
-- **Best Performing Set:** **Document 2 (**`test2.txt`**)** using **PyTorch 2.16.0a0 + ROCm 10.3.0**.
-- **Total Latency Gain (Run 1):**$$\\text{Gain} = \\frac{86.545\\text{ ms} - 82.817\\text{ ms}}{86.545\\text{ ms}} \\times 100 = \\mathbf{4.31%}$$
-- **Total Latency Gain (Averaged across Run 1 & Run 2):**$$\\text{Gain} = \\frac{86.545\\text{ ms} - 83.812\\text{ ms}}{86.545\\text{ ms}} \\times 100 = \\mathbf{3.16%}$$
-
-### Summary
-
-The updated ROCm 10.3.0 and PyTorch 2.16 stack in Document 2 yields up to a **4.31% overall reduction in native solver latency** across the benchmark suite compared to Document 1.
+Recommended pip install command:
+python -m pip install --pre --index-url https://nightly.repo.amd.com/rocm/pytorch/whl-next --extra-index-url https://nightly.repo.amd.com/rocm/core/whl-next amd-torch-device-gfx1030==2.16.0a0+rocm10.3.0a20261031 rocm==10.3.0a20261031 rocm-bootstrap==0.3.0 rocm-sdk-core==10.3.0a20261031 rocm-sdk-devel==10.3.0a20261031 rocm-sdk-device-gfx1030==10.3.0a20261031 rocm-sdk-libraries==10.3.0a20261031 torch==2.16.0a0+rocm10.3.0a20261031 torchaudio==2.11.1+rocm10.3.0a20261031
+==============================================================================
+```
