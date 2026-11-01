@@ -545,7 +545,7 @@ def recommended_install_command(
         f"{package}=={version}" for package, version in sorted(runtime_packages.items())
     )
     return (
-        "python -m pip install --pre "
+        "python -m pip install --upgrade --pre "
         f"--index-url {repositories['pytorch']} "
         f"--extra-index-url {repositories['core']} "
         f"{package_specs}"
