@@ -500,17 +500,42 @@ def run_and_tee(command: list[str], output) -> None:
 
 
 def recommended_install_command(
-    environment: str, stable_results: Path, nightly_results: Path
-) -> str:
+    environment: str,
+    stable_results: Path,
+    nightly_results: Path,
+    torchvision_validated: bool,
+) -> Optional[str]:
+    if not torchvision_validated:
+        return None
+
     results_file = stable_results if environment == "stable" else nightly_results
     packages, _ = comparison_generator.parse_file(results_file)
+    architecture = comparison_generator.read_metadata(results_file, "Architecture")
+    if architecture is None:
+        return None
+    required_packages = {
+        "torch",
+        "torchvision",
+        f"amd-torch-device-{architecture}",
+        f"amd-torchvision-device-{architecture}",
+    }
+    if not required_packages.issubset(packages) or any(
+        not packages[package] or packages[package].lower() == "none"
+        for package in required_packages
+    ):
+        return None
+    if packages["torchvision"] != packages[f"amd-torchvision-device-{architecture}"]:
+        return None
+
+    architecture_packages = {
+        f"amd-torch-device-{architecture}",
+        f"amd-torchvision-device-{architecture}",
+        f"rocm-sdk-device-{architecture}",
+    }
     runtime_packages = {
         package: version
         for package, version in packages.items()
-        if package in AMD_PACKAGE_NAMES
-        or package.startswith("amd-torch-device-")
-        or package.startswith("amd-torchvision-device-")
-        or package.startswith("rocm-sdk-device-")
+        if package in AMD_PACKAGE_NAMES or package in architecture_packages
     }
     if not runtime_packages:
         raise ValueError(f"No ROCm or PyTorch packages found in {results_file}.")
@@ -527,11 +552,68 @@ def recommended_install_command(
     )
 
 
+def validate_torchvision_runtime(python: Path, architecture: str) -> Tuple[bool, str]:
+    validation_script = """
+from importlib.metadata import version
+import sys
+
+import torch
+import torchvision
+
+architecture = sys.argv[1]
+torchvision_version = version("torchvision")
+device_version = version(f"amd-torchvision-device-{architecture}")
+if torchvision_version != device_version:
+    raise RuntimeError(
+        f"torchvision {torchvision_version} does not match "
+        f"amd-torchvision-device-{architecture} {device_version}"
+    )
+
+def verify_nms(device):
+    boxes = torch.tensor(
+        [[0, 0, 10, 10], [1, 1, 11, 11]], dtype=torch.float32, device=device
+    )
+    scores = torch.tensor([0.9, 0.8], dtype=torch.float32, device=device)
+    selected = torchvision.ops.nms(boxes, scores, 0.5)
+    if selected.tolist() != [0]:
+        raise RuntimeError(f"torchvision NMS returned an unexpected result on {device}")
+
+verify_nms("cpu")
+if not torch.cuda.is_available():
+    raise RuntimeError("PyTorch reports no ROCm/CUDA device for torchvision GPU validation")
+verify_nms("cuda")
+print(
+    f"torch={torch.__version__}, torchvision={torchvision_version}, "
+    f"amd-torchvision-device={device_version}; CPU and GPU NMS passed"
+)
+"""
+    try:
+        result = subprocess.run(
+            [str(python), "-c", validation_script, architecture],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return False, "torchvision validation timed out"
+
+    if result.returncode:
+        detail = (result.stderr or result.stdout).strip()
+        if not detail:
+            detail = f"validation exited with status {result.returncode}"
+        return False, detail
+    return True, result.stdout.strip()
+
+
 def print_completion_summary(
     comparison_file: Path,
     metrics: Mapping[str, Union[int, float]],
     preferred: str,
-    pip_command: str,
+    pip_command: Optional[str],
 ) -> None:
     cyan = "\033[36m"
     green = "\033[92m"
@@ -561,8 +643,15 @@ def print_completion_summary(
         f"{green}{preferred}{reset}"
     )
     print(f"  {dim}{'Comparison report':<24}{reset} {cyan}{comparison_file}{reset}")
-    print(f"\n{green}Recommended pip install command:{reset}")
-    print(f"{yellow}{pip_command}{reset}")
+    if pip_command is not None:
+        print(f"\n{green}Recommended pip install command:{reset}")
+        print(f"{yellow}{pip_command}{reset}")
+    else:
+        print(
+            f"\n{yellow}No pip install recommendation: torchvision and its "
+            f"architecture package must pass CPU and GPU NMS validation in both "
+            f"benchmark environments.{reset}"
+        )
     print(f"{cyan}{'=' * 78}{reset}")
 
 
@@ -731,6 +820,19 @@ def main() -> None:
             check=True,
         )
         metrics = comparison_generator.aggregate_metrics(stable_results, nightly_results)
+        torchvision_validation = {}
+        for name, python in (
+            ("stable", stable_python),
+            ("nightly", nightly_python),
+        ):
+            passed, detail = validate_torchvision_runtime(python, architecture)
+            torchvision_validation[name] = passed
+            status_color = "\033[92m" if passed else "\033[91m"
+            print(
+                f"{status_color}Torchvision validation ({name}): "
+                f"{'PASS' if passed else 'FAILED'} - {detail}\033[0m",
+                flush=True,
+            )
         preferred = (
             "stable"
             if metrics["stable_average"] <= metrics["nightly_average"]
@@ -740,7 +842,12 @@ def main() -> None:
             comparison_file,
             metrics,
             preferred,
-            recommended_install_command(preferred, stable_results, nightly_results),
+            recommended_install_command(
+                preferred,
+                stable_results,
+                nightly_results,
+                all(torchvision_validation.values()),
+            ),
         )
     finally:
         for requirements_file in temporary_requirements:

@@ -20,4 +20,6 @@ setuptools==81.0.0
 sympy==1.14.0
 torch==2.14.0+rocm10.2.0a20260926
 torchaudio==2.11.0.3+rocm10.2.0a20260926
+amd-torchvision-device-gfx1030
+torchvision
 typing_extensions==4.16.0
