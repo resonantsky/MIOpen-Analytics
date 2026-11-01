@@ -435,6 +435,6 @@ Stable / nightly benchmark summary
   Comparison report        E:\ROCm-Check\comparison.md
 
 Recommended pip install command:
-python -m pip install --pre --index-url https://nightly.repo.amd.com/rocm/pytorch/whl-next --extra-index-url https://nightly.repo.amd.com/rocm/core/whl-next amd-torch-device-gfx1030==2.16.0a0+rocm10.3.0a20261031 amd-torchvision-device-gfx1030==0.30.0a0+rocm10.3.0a20261031 rocm==10.3.0a20261031 rocm-bootstrap==0.3.0 rocm-sdk-core==10.3.0a20261031 rocm-sdk-devel==10.3.0a20261101 rocm-sdk-device-gfx1030==10.3.0a20261031 rocm-sdk-libraries==10.3.0a20261031 torch==2.16.0a0+rocm10.3.0a20261031 torchaudio==2.11.1+rocm10.3.0a20261031 torchvision==0.30.0a0+rocm10.3.0a20261031
+python -m pip install --upgrade --pre --index-url https://nightly.repo.amd.com/rocm/pytorch/whl-next --extra-index-url https://nightly.repo.amd.com/rocm/core/whl-next amd-torch-device-gfx1030==2.16.0a0+rocm10.3.0a20261031 amd-torchvision-device-gfx1030==0.30.0a0+rocm10.3.0a20261031 rocm==10.3.0a20261031 rocm-bootstrap==0.3.0 rocm-sdk-core==10.3.0a20261031 rocm-sdk-devel==10.3.0a20261101 rocm-sdk-device-gfx1030==10.3.0a20261031 rocm-sdk-libraries==10.3.0a20261031 torch==2.16.0a0+rocm10.3.0a20261031 torchaudio==2.11.1+rocm10.3.0a20261031 torchvision==0.30.0a0+rocm10.3.0a20261031
 ==============================================================================
 ```

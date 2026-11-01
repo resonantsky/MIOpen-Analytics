@@ -269,20 +269,28 @@ def architecture_wheel_status(
     return "unknown"
 
 
+def print_supported_architectures() -> None:
+    print("Supported architectures:")
+    groups = ("gfx10", "gfx11", "gfx12", "gfx9")
+    for prefix in groups:
+        architectures = tuple(
+            architecture
+            for architecture in ARCHITECTURES
+            if architecture.startswith(prefix)
+        )
+        if architectures:
+            print(f"  {prefix}: " + ", ".join(architectures))
+
+
 def print_architecture_wheel_status(
     availability: Mapping[str, Mapping[Tuple[str, str], WheelProbe]]
 ) -> None:
     green = "\033[92m"
     red = "\033[91m"
     yellow = "\033[93m"
-    dim = "\033[2m"
     reset = "\033[0m"
 
-    print(
-        "AMD package availability by architecture "
-        f"({dim}checks compatible wheels and the ROCm source archive in stable and nightly "
-        f"indexes for this Python/platform{reset}):"
-    )
+    print("AMD package availability (stable + nightly):")
     for architecture, probes in availability.items():
         status = architecture_wheel_status(probes)
         color, label = {
@@ -290,51 +298,11 @@ def print_architecture_wheel_status(
             "missing": (red, "PACKAGES MISSING"),
             "unknown": (yellow, "CHECK UNKNOWN"),
         }[status]
-        torch_status = []
-        for channel in ("stable", "nightly"):
-            target_probe = probes.get((channel, f"amd-torch-device-{architecture}"))
-            target_label = (
-                "Torch OK"
-                if target_probe is not None and target_probe.available is True
-                else "Torch unknown"
-                if target_probe is not None and target_probe.available is None
-                else "Torch missing"
-            )
-            sdk_probe = probes.get((channel, f"rocm-sdk-device-{architecture}"))
-            sdk_label = (
-                "SDK OK"
-                if sdk_probe is not None and sdk_probe.available is True
-                else "SDK unknown"
-                if sdk_probe is not None and sdk_probe.available is None
-                else "SDK missing"
-            )
-            torch_status.append(f"{channel}: {target_label}, {sdk_label}")
-        details = [
-            f"{channel} {package}: {probe.detail}"
-            for (channel, package), probe in probes.items()
-            if probe.available is False
-        ]
-        details.extend(
-            f"{channel} {package}: {probe.detail}"
-            for (channel, package), probe in probes.items()
-            if probe.available is None
-        )
-        suffix = f" - {'; '.join(details[:3])}" if details else ""
-        if len(details) > 3:
-            suffix += f"; and {len(details) - 3} more"
-        print(
-            f"  {color}{architecture:<8} [{label}]{reset} "
-            + " | ".join(torch_status)
-            + suffix
-        )
+        print(f"  {color}{architecture:<8} {label}{reset}")
     print(
-        f"{green}Green{reset}: required packages found. "
-        f"{red}Red{reset}: one or more are missing. "
-        f"{yellow}Yellow{reset}: index could not be checked."
-    )
-    print(
-        f"{dim}This is package availability, not an official hardware support "
-        f"or runtime test. No architectures are disabled.{reset}"
+        f"{green}OK{reset} = all required packages found; "
+        f"{red}MISSING{reset} = one or more unavailable; "
+        f"{yellow}UNKNOWN{reset} = index check failed."
     )
 
 
@@ -738,7 +706,7 @@ def main() -> None:
         f"Package installer: {'uv' if UV_EXECUTABLE is not None else 'pip'}",
         flush=True,
     )
-    print("Supported architectures: " + ", ".join(ARCHITECTURES))
+    print_supported_architectures()
     wheel_availability = check_architecture_wheels()
     print_architecture_wheel_status(wheel_availability)
     try:
