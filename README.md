@@ -27,126 +27,57 @@ Example output:
 ```
 ➜ python .\MIOpen-Check.py
 Package installer: uv
-Supported architectures: gfx1010, gfx1011, gfx1012, gfx1030, gfx1031, gfx1032, gfx1033, gfx1034, gfx1035, gfx1036, gfx1100, gfx1101, gfx1102, gfx1103, gfx110x, gfx1150, gfx1151, gfx1152, gfx1153, gfx115x, gfx12-0, gfx1200, gfx1201, gfx1250, gfx900, gfx906, gfx908, gfx90a, gfx90c, gfx942, gfx950
+  gfx1010, gfx1011, gfx1012, gfx1030, gfx1031, gfx1032, gfx1033, gfx1034, gfx1035, gfx1036
+  gfx1100, gfx1101, gfx1102, gfx1103, gfx110x, gfx1150, gfx1151, gfx1152, gfx1153, gfx115x
+  gfx12-0, gfx1200, gfx1201, gfx1250
+  gfx900, gfx906, gfx908, gfx90a, gfx90c, gfx942, gfx950
+Supported architectures:
 Checking required AMD package artifacts for Python 3.12 (win-amd64)...
-AMD package availability by architecture (checks compatible wheels and the ROCm source archive in stable and nightly indexes for this Python/platform):
-  gfx1010  [PACKAGE SET OK] stable: Torch OK, SDK OK | nightly: Torch OK, SDK OK
-  gfx1011  [PACKAGE SET OK] stable: Torch OK, SDK OK | nightly: Torch OK, SDK OK
-  gfx1012  [PACKAGE SET OK] stable: Torch OK, SDK OK | nightly: Torch OK, SDK OK
-  gfx1030  [PACKAGE SET OK] stable: Torch OK, SDK OK | nightly: Torch OK, SDK OK
-  gfx1031  [PACKAGE SET OK] stable: Torch OK, SDK OK | nightly: Torch OK, SDK OK
-  gfx1032  [PACKAGE SET OK] stable: Torch OK, SDK OK | nightly: Torch OK, SDK OK
-  gfx1033  [PACKAGE SET OK] stable: Torch OK, SDK OK | nightly: Torch OK, SDK OK
-  gfx1034  [PACKAGE SET OK] stable: Torch OK, SDK OK | nightly: Torch OK, SDK OK
-  gfx1035  [PACKAGE SET OK] stable: Torch OK, SDK OK | nightly: Torch OK, SDK OK
-  gfx1036  [PACKAGE SET OK] stable: Torch OK, SDK OK | nightly: Torch OK, SDK OK
-  gfx1100  [PACKAGE SET OK] stable: Torch OK, SDK OK | nightly: Torch OK, SDK OK
-  gfx1101  [PACKAGE SET OK] stable: Torch OK, SDK OK | nightly: Torch OK, SDK OK
-  gfx1102  [PACKAGE SET OK] stable: Torch OK, SDK OK | nightly: Torch OK, SDK OK
-  gfx1103  [PACKAGE SET OK] stable: Torch OK, SDK OK | nightly: Torch OK, SDK OK
-  gfx110x  [PACKAGES MISSING] stable: Torch OK, SDK missing | nightly: Torch OK, SDK missing - stable rocm-sdk-device-gfx110x: package not published; stable amd-torchvision-device-gfx110x: package not published; nightly rocm-sdk-device-gfx110x: package not published; and 1 more
-  gfx1150  [PACKAGE SET OK] stable: Torch OK, SDK OK | nightly: Torch OK, SDK OK
-  gfx1151  [PACKAGE SET OK] stable: Torch OK, SDK OK | nightly: Torch OK, SDK OK
-  gfx1152  [PACKAGE SET OK] stable: Torch OK, SDK OK | nightly: Torch OK, SDK OK
-  gfx1153  [PACKAGE SET OK] stable: Torch OK, SDK OK | nightly: Torch OK, SDK OK
-  gfx115x  [PACKAGES MISSING] stable: Torch OK, SDK missing | nightly: Torch OK, SDK missing - stable rocm-sdk-device-gfx115x: package not published; stable amd-torchvision-device-gfx115x: package not published; nightly rocm-sdk-device-gfx115x: package not published; and 1 more
-  gfx12-0  [PACKAGES MISSING] stable: Torch OK, SDK missing | nightly: Torch OK, SDK missing - stable rocm-sdk-device-gfx12-0: package not published; stable amd-torchvision-device-gfx12-0: package not published; nightly rocm-sdk-device-gfx12-0: package not published; and 1 more
-  gfx1200  [PACKAGE SET OK] stable: Torch OK, SDK OK | nightly: Torch OK, SDK OK
-  gfx1201  [PACKAGE SET OK] stable: Torch OK, SDK OK | nightly: Torch OK, SDK OK
-  gfx1250  [PACKAGES MISSING] stable: Torch missing, SDK missing | nightly: Torch missing, SDK missing - stable amd-torch-device-gfx1250: no compatible wheel published for this Python/platform; stable rocm-sdk-device-gfx1250: no compatible wheel published for this Python/platform; stable amd-torchvision-device-gfx1250: no compatible wheel published for this Python/platform; and 3 more
-  gfx900   [PACKAGES MISSING] stable: Torch missing, SDK missing | nightly: Torch OK, SDK OK - stable amd-torch-device-gfx900: package not published; stable rocm-sdk-device-gfx900: package not published; stable amd-torchvision-device-gfx900: package not published
-  gfx906   [PACKAGES MISSING] stable: Torch missing, SDK missing | nightly: Torch OK, SDK OK - stable amd-torch-device-gfx906: package not published; stable rocm-sdk-device-gfx906: package not published; stable amd-torchvision-device-gfx906: package not published
-  gfx908   [PACKAGE SET OK] stable: Torch OK, SDK OK | nightly: Torch OK, SDK OK
-  gfx90a   [PACKAGE SET OK] stable: Torch OK, SDK OK | nightly: Torch OK, SDK OK
-  gfx90c   [PACKAGES MISSING] stable: Torch missing, SDK missing | nightly: Torch OK, SDK OK - stable amd-torch-device-gfx90c: package not published; stable rocm-sdk-device-gfx90c: package not published; stable amd-torchvision-device-gfx90c: package not published
-  gfx942   [PACKAGES MISSING] stable: Torch missing, SDK missing | nightly: Torch missing, SDK missing - stable amd-torch-device-gfx942: no compatible wheel published for this Python/platform; stable rocm-sdk-device-gfx942: no compatible wheel published for this Python/platform; stable amd-torchvision-device-gfx942: no compatible wheel published for this Python/platform; and 3 more
-  gfx950   [PACKAGES MISSING] stable: Torch missing, SDK missing | nightly: Torch missing, SDK missing - stable amd-torch-device-gfx950: no compatible wheel published for this Python/platform; stable rocm-sdk-device-gfx950: no compatible wheel published for this Python/platform; stable amd-torchvision-device-gfx950: no compatible wheel published for this Python/platform; and 3 more
-Green: required packages found. Red: one or more are missing. Yellow: index could not be checked.
-This is package availability, not an official hardware support or runtime test. No architectures are disabled.
+AMD package availability (stable + nightly):
+  gfx1010  PACKAGE SET OK
+  gfx1011  PACKAGE SET OK
+  gfx1012  PACKAGE SET OK
+  gfx1030  PACKAGE SET OK
+  gfx1031  PACKAGE SET OK
+  gfx1032  PACKAGE SET OK
+  gfx1033  PACKAGE SET OK
+  gfx1034  PACKAGE SET OK
+  gfx1035  PACKAGE SET OK
+  gfx1036  PACKAGE SET OK
+  gfx1100  PACKAGE SET OK
+  gfx1101  PACKAGE SET OK
+  gfx1102  PACKAGE SET OK
+  gfx1103  PACKAGE SET OK
+  gfx110x  PACKAGES MISSING
+  gfx1150  PACKAGE SET OK
+  gfx1151  PACKAGE SET OK
+  gfx1152  PACKAGE SET OK
+  gfx1153  PACKAGE SET OK
+  gfx115x  PACKAGES MISSING
+  gfx12-0  PACKAGES MISSING
+  gfx1200  PACKAGE SET OK
+  gfx1201  PACKAGE SET OK
+  gfx1250  PACKAGES MISSING
+  gfx900   PACKAGES MISSING
+  gfx906   PACKAGES MISSING
+  gfx908   PACKAGE SET OK
+  gfx90a   PACKAGE SET OK
+  gfx90c   PACKAGES MISSING
+  gfx942   PACKAGES MISSING
+  gfx950   PACKAGES MISSING
+OK = all required packages found; MISSING = one or more unavailable; UNKNOWN = index check failed.
 Enter the GFX architecture (for example, gfx1030): gfx1030
 Pinning stable ROCm packages to 10.0.0 for gfx1030
-Creating stable virtual environment at E:\ROCm-Check\venv-stable
 Installing stable requirements for gfx1030
 Using Python 3.12.9 environment at: venv-stable
-Resolved 14 packages in 129ms
-░░░░░░░░░░░░░░░░░░░░ [0/14] Installing wheels...                                                                                                                                                                                               warning: Failed to hardlink files; falling back to full copy. This may lead to degraded performance.
-         If the cache and target directories are on different filesystems, hardlinking may not be supported.
-         If this is intentional, set `export UV_LINK_MODE=copy` or use `--link-mode=copy` to suppress this warning.
-Installed 14 packages in 1.23s
- + filelock==3.32.6
- + fsspec==2026.7.0
- + jinja2==3.1.6
- + markdown-it-py==4.2.0
- + markupsafe==3.0.3
- + mdurl==0.1.2
- + mpmath==1.3.0
- + networkx==3.6.1
- + numpy==2.5.3
- + pygments==2.21.0
- + rich==15.0.0
- + setuptools==81.0.0
- + sympy==1.14.0
- + typing-extensions==4.16.0
+Audited 14 packages in 6ms
 Using Python 3.12.9 environment at: venv-stable
-Resolved 22 packages in 3.46s
-Prepared 3 packages in 2.26s
-░░░░░░░░░░░░░░░░░░░░ [0/12] Installing wheels...                                                                                                                                                                                               warning: Failed to hardlink files; falling back to full copy. This may lead to degraded performance.
-         If the cache and target directories are on different filesystems, hardlinking may not be supported.
-         If this is intentional, set `export UV_LINK_MODE=copy` or use `--link-mode=copy` to suppress this warning.
-Installed 12 packages in 9.42s
- + amd-torch-device-gfx1030==2.13.0+rocm10.0.0
- + amd-torchvision-device-gfx1030==0.28.0+rocm10.0.0
- + pillow==12.3.0
- + rocm==10.0.0
- + rocm-bootstrap==0.3.0
- + rocm-sdk-core==10.0.0
- + rocm-sdk-devel==10.0.0
- + rocm-sdk-device-gfx1030==10.0.0
- + rocm-sdk-libraries==10.0.0
- + torch==2.13.0+rocm10.0.0
- + torchaudio==2.11.0.2+rocm10.0.0
- + torchvision==0.28.0+rocm10.0.0
-Creating nightly virtual environment at E:\ROCm-Check\venv-nightly
+Audited 11 packages in 8ms
 Installing nightly requirements for gfx1030
 Using Python 3.12.9 environment at: venv-nightly
-Resolved 14 packages in 12ms
-░░░░░░░░░░░░░░░░░░░░ [0/14] Installing wheels...                                                                                                                                                                                               warning: Failed to hardlink files; falling back to full copy. This may lead to degraded performance.
-         If the cache and target directories are on different filesystems, hardlinking may not be supported.
-         If this is intentional, set `export UV_LINK_MODE=copy` or use `--link-mode=copy` to suppress this warning.
-Installed 14 packages in 1.22s
- + filelock==3.32.6
- + fsspec==2026.7.0
- + jinja2==3.1.6
- + markdown-it-py==4.2.0
- + markupsafe==3.0.3
- + mdurl==0.1.2
- + mpmath==1.3.0
- + networkx==3.6.1
- + numpy==2.5.3
- + pygments==2.21.0
- + rich==15.0.0
- + setuptools==81.0.0
- + sympy==1.14.0
- + typing-extensions==4.16.0
+Audited 14 packages in 6ms
 Using Python 3.12.9 environment at: venv-nightly
-Resolved 22 packages in 7.58s
-Prepared 3 packages in 2.39s
-░░░░░░░░░░░░░░░░░░░░ [0/12] Installing wheels...                                                                                                                                                                                               warning: Failed to hardlink files; falling back to full copy. This may lead to degraded performance.
-         If the cache and target directories are on different filesystems, hardlinking may not be supported.
-         If this is intentional, set `export UV_LINK_MODE=copy` or use `--link-mode=copy` to suppress this warning.
-Installed 12 packages in 10.27s
- + amd-torch-device-gfx1030==2.16.0a0+rocm10.3.0a20261031
- + amd-torchvision-device-gfx1030==0.30.0a0+rocm10.3.0a20261031
- + pillow==12.3.0
- + rocm==10.3.0a20261031
- + rocm-bootstrap==0.3.0
- + rocm-sdk-core==10.3.0a20261031
- + rocm-sdk-devel==10.3.0a20261101
- + rocm-sdk-device-gfx1030==10.3.0a20261031
- + rocm-sdk-libraries==10.3.0a20261031
- + torch==2.16.0a0+rocm10.3.0a20261031
- + torchaudio==2.11.1+rocm10.3.0a20261031
- + torchvision==0.30.0a0+rocm10.3.0a20261031
+Audited 11 packages in 9ms
 Running stable normal benchmark; recording stable-results.txt
 
 === Stable benchmark output (also saved to stable-results.txt) ===
@@ -154,137 +85,137 @@ Running stable normal benchmark; recording stable-results.txt
 conv2d ch256-k(3, 3)-d(1, 1)-0
 native: miopen torch
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   3.841 ms
+  Measured latency   3.924 ms
 phased included
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   4.243 ms
-  Torch / included   0.91x
+  Measured latency   4.411 ms
+  Torch / included   0.89x
 ==============================================================================
 conv2d ch256-k(3, 3)-d(2, 2)-1
 native: miopen torch
   Algorithm          GemmFwdRest
-  Measured latency   8.380 ms
+  Measured latency   8.922 ms
 phased included
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   5.001 ms
-  Torch / included   1.68x
+  Measured latency   5.238 ms
+  Torch / included   1.70x
 ==============================================================================
 conv2d ch256-k(3, 3)-d(3, 3)-2
 native: miopen torch
   Algorithm          GemmFwdRest
-  Measured latency   8.497 ms
+  Measured latency   8.760 ms
 phased included
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   6.004 ms
-  Torch / included   1.42x
+  Measured latency   6.082 ms
+  Torch / included   1.44x
 ==============================================================================
 conv2d ch256-k(5, 5)-d(1, 1)-0
 native: miopen torch
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   13.320 ms
+  Measured latency   13.562 ms
 phased included
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   13.804 ms
+  Measured latency   14.195 ms
   Torch / included   0.96x
 ==============================================================================
 conv2d ch256-k(5, 5)-d(2, 2)-1
 native: miopen torch
   Algorithm          GemmFwdRest
-  Measured latency   22.809 ms
+  Measured latency   23.373 ms
 phased included
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   14.754 ms
+  Measured latency   15.071 ms
   Torch / included   1.55x
 ==============================================================================
 conv2d ch128-k(3, 3)-d(1, 1)-0
 native: miopen torch
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.658 ms
+  Measured latency   1.665 ms
 phased included
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.766 ms
+  Measured latency   1.777 ms
   Torch / included   0.94x
 ==============================================================================
 conv2d ch128-k(3, 3)-d(2, 2)-1
 native: miopen torch
   Algorithm          GemmFwdRest
-  Measured latency   3.526 ms
+  Measured latency   3.513 ms
 phased included
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   2.291 ms
-  Torch / included   1.54x
+  Measured latency   2.228 ms
+  Torch / included   1.58x
 ==============================================================================
 conv2d ch128-k(3, 3)-d(3, 3)-2
 native: miopen torch
   Algorithm          GemmFwdRest
-  Measured latency   3.566 ms
+  Measured latency   3.467 ms
 phased included
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   2.551 ms
-  Torch / included   1.40x
+  Measured latency   2.529 ms
+  Torch / included   1.37x
 ==============================================================================
 conv2d ch128-k(5, 5)-d(1, 1)-0
 native: miopen torch
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   3.656 ms
+  Measured latency   3.590 ms
 phased included
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   3.883 ms
-  Torch / included   0.94x
+  Measured latency   3.987 ms
+  Torch / included   0.90x
 ==============================================================================
 conv2d ch128-k(5, 5)-d(2, 2)-1
 native: miopen torch
   Algorithm          GemmFwdRest
-  Measured latency   7.003 ms
+  Measured latency   7.056 ms
 phased included
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   4.523 ms
-  Torch / included   1.55x
+  Measured latency   4.509 ms
+  Torch / included   1.56x
 ==============================================================================
 conv2d ch64-k(3, 3)-d(1, 1)-0
 native: miopen torch
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   0.993 ms
+  Measured latency   0.922 ms
 phased included
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.196 ms
-  Torch / included   0.83x
+  Measured latency   1.079 ms
+  Torch / included   0.85x
 ==============================================================================
 conv2d ch64-k(3, 3)-d(2, 2)-1
 native: miopen torch
   Algorithm          GemmFwdRest
-  Measured latency   2.394 ms
+  Measured latency   2.315 ms
 phased included
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.278 ms
-  Torch / included   1.87x
+  Measured latency   1.351 ms
+  Torch / included   1.71x
 ==============================================================================
 conv2d ch64-k(3, 3)-d(3, 3)-2
 native: miopen torch
   Algorithm          GemmFwdRest
-  Measured latency   2.350 ms
+  Measured latency   2.279 ms
 phased included
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.538 ms
-  Torch / included   1.53x
+  Measured latency   1.464 ms
+  Torch / included   1.56x
 ==============================================================================
 conv2d ch64-k(5, 5)-d(1, 1)-0
 native: miopen torch
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.412 ms
+  Measured latency   1.518 ms
 phased included
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.553 ms
-  Torch / included   0.91x
+  Measured latency   1.610 ms
+  Torch / included   0.94x
 ==============================================================================
 conv2d ch64-k(5, 5)-d(2, 2)-1
 native: miopen torch
   Algorithm          GemmFwdRest
-  Measured latency   4.024 ms
+  Measured latency   4.065 ms
 phased included
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.824 ms
-  Torch / included   2.21x
+  Measured latency   1.858 ms
+  Torch / included   2.19x
 Running nightly normal benchmark; recording nightly-results.txt
 
 === Nightly benchmark output (also saved to nightly-results.txt) ===
@@ -292,145 +223,149 @@ Running nightly normal benchmark; recording nightly-results.txt
 conv2d ch256-k(3, 3)-d(1, 1)-0
 native: miopen torch
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   3.904 ms
+  Measured latency   3.913 ms
 phased included
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   4.174 ms
-  Torch / included   0.94x
+  Measured latency   4.267 ms
+  Torch / included   0.92x
 ==============================================================================
 conv2d ch256-k(3, 3)-d(2, 2)-1
 native: miopen torch
   Algorithm          GemmFwdRest
-  Measured latency   8.245 ms
+  Measured latency   8.306 ms
 phased included
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   4.998 ms
-  Torch / included   1.65x
+  Measured latency   5.367 ms
+  Torch / included   1.55x
 ==============================================================================
 conv2d ch256-k(3, 3)-d(3, 3)-2
 native: miopen torch
   Algorithm          GemmFwdRest
-  Measured latency   8.385 ms
+  Measured latency   8.519 ms
 phased included
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   5.894 ms
-  Torch / included   1.42x
+  Measured latency   5.950 ms
+  Torch / included   1.43x
 ==============================================================================
 conv2d ch256-k(5, 5)-d(1, 1)-0
 native: miopen torch
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   13.147 ms
+  Measured latency   13.327 ms
 phased included
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   13.862 ms
+  Measured latency   14.097 ms
   Torch / included   0.95x
 ==============================================================================
 conv2d ch256-k(5, 5)-d(2, 2)-1
 native: miopen torch
   Algorithm          GemmFwdRest
-  Measured latency   22.578 ms
+  Measured latency   22.731 ms
 phased included
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   14.788 ms
-  Torch / included   1.53x
+  Measured latency   14.942 ms
+  Torch / included   1.52x
 ==============================================================================
 conv2d ch128-k(3, 3)-d(1, 1)-0
 native: miopen torch
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.605 ms
+  Measured latency   1.629 ms
 phased included
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.807 ms
-  Torch / included   0.89x
+  Measured latency   1.888 ms
+  Torch / included   0.86x
 ==============================================================================
 conv2d ch128-k(3, 3)-d(2, 2)-1
 native: miopen torch
   Algorithm          GemmFwdRest
-  Measured latency   3.351 ms
+  Measured latency   3.484 ms
 phased included
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   2.217 ms
-  Torch / included   1.51x
+  Measured latency   2.370 ms
+  Torch / included   1.47x
 ==============================================================================
 conv2d ch128-k(3, 3)-d(3, 3)-2
 native: miopen torch
   Algorithm          GemmFwdRest
-  Measured latency   3.459 ms
+  Measured latency   3.551 ms
 phased included
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   2.549 ms
-  Torch / included   1.36x
+  Measured latency   2.709 ms
+  Torch / included   1.31x
 ==============================================================================
 conv2d ch128-k(5, 5)-d(1, 1)-0
 native: miopen torch
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   3.567 ms
+  Measured latency   3.570 ms
 phased included
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   3.769 ms
-  Torch / included   0.95x
+  Measured latency   3.894 ms
+  Torch / included   0.92x
 ==============================================================================
 conv2d ch128-k(5, 5)-d(2, 2)-1
 native: miopen torch
   Algorithm          GemmFwdRest
-  Measured latency   6.675 ms
+  Measured latency   6.787 ms
 phased included
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   4.316 ms
-  Torch / included   1.55x
+  Measured latency   4.632 ms
+  Torch / included   1.47x
 ==============================================================================
 conv2d ch64-k(3, 3)-d(1, 1)-0
 native: miopen torch
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   0.974 ms
+  Measured latency   1.264 ms
 phased included
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.049 ms
-  Torch / included   0.93x
+  Measured latency   1.227 ms
+  Torch / included   1.03x
 ==============================================================================
 conv2d ch64-k(3, 3)-d(2, 2)-1
 native: miopen torch
   Algorithm          GemmFwdRest
-  Measured latency   2.329 ms
+  Measured latency   2.345 ms
 phased included
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.391 ms
-  Torch / included   1.67x
+  Measured latency   1.368 ms
+  Torch / included   1.71x
 ==============================================================================
 conv2d ch64-k(3, 3)-d(3, 3)-2
 native: miopen torch
   Algorithm          GemmFwdRest
-  Measured latency   2.368 ms
+  Measured latency   2.330 ms
 phased included
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.465 ms
-  Torch / included   1.62x
+  Measured latency   1.560 ms
+  Torch / included   1.49x
 ==============================================================================
 conv2d ch64-k(5, 5)-d(1, 1)-0
 native: miopen torch
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.411 ms
+  Measured latency   1.539 ms
 phased included
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.555 ms
-  Torch / included   0.91x
+  Measured latency   1.727 ms
+  Torch / included   0.89x
 ==============================================================================
 conv2d ch64-k(5, 5)-d(2, 2)-1
 native: miopen torch
   Algorithm          GemmFwdRest
-  Measured latency   3.781 ms
+  Measured latency   3.921 ms
 phased included
   Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.900 ms
-  Torch / included   1.99x
+  Measured latency   1.928 ms
+  Torch / included   2.03x
+
+==============================================================================
+Torchvision validation
 Torchvision validation (stable): PASS - torch=2.13.0+rocm10.0.0, torchvision=0.28.0+rocm10.0.0, amd-torchvision-device=0.28.0+rocm10.0.0; CPU and GPU NMS passed
 Torchvision validation (nightly): PASS - torch=2.16.0a0+rocm10.3.0a20261031, torchvision=0.30.0a0+rocm10.3.0a20261031, amd-torchvision-device=0.30.0a0+rocm10.3.0a20261031; CPU and GPU NMS passed
+==============================================================================
 
 ==============================================================================
 Stable / nightly benchmark summary
   Matched configurations 15
-  Stable total / average   87.429 ms / 5.829 ms
-  Nightly total / average  85.779 ms / 5.719 ms
+  Stable total / average   88.931 ms / 5.929 ms
+  Nightly total / average  87.216 ms / 5.814 ms
   Preferred packages       nightly
   Comparison report        E:\ROCm-Check\comparison.md
 
