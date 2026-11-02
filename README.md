@@ -34,341 +34,436 @@ Supported architectures:
   gfx9: gfx900, gfx906, gfx908, gfx90a, gfx90c, gfx942, gfx950
 Checking required AMD package artifacts for Python 3.12 (win-amd64)...
 AMD package availability (stable + nightly):
-  gfx1010  PACKAGE SET OK
-  gfx1011  PACKAGE SET OK
-  gfx1012  PACKAGE SET OK
-  gfx1030  PACKAGE SET OK
-  gfx1031  PACKAGE SET OK
-  gfx1032  PACKAGE SET OK
-  gfx1033  PACKAGE SET OK
-  gfx1034  PACKAGE SET OK
-  gfx1035  PACKAGE SET OK
-  gfx1036  PACKAGE SET OK
-  gfx1100  PACKAGE SET OK
-  gfx1101  PACKAGE SET OK
-  gfx1102  PACKAGE SET OK
-  gfx1103  PACKAGE SET OK
-  gfx110x  PACKAGES MISSING
-  gfx1150  PACKAGE SET OK
-  gfx1151  PACKAGE SET OK
-  gfx1152  PACKAGE SET OK
-  gfx1153  PACKAGE SET OK
-  gfx115x  PACKAGES MISSING
-  gfx12-0  PACKAGES MISSING
-  gfx1200  PACKAGE SET OK
-  gfx1201  PACKAGE SET OK
-  gfx1250  PACKAGES MISSING
-  gfx900   PACKAGES MISSING
-  gfx906   PACKAGES MISSING
-  gfx908   PACKAGE SET OK
-  gfx90a   PACKAGE SET OK
-  gfx90c   PACKAGES MISSING
-  gfx942   PACKAGES MISSING
-  gfx950   PACKAGES MISSING
+  gfx10: gfx1010, gfx1011, gfx1012, gfx1030, gfx1031, gfx1032, gfx1033, gfx1034, gfx1035, gfx1036
+  gfx11: gfx1100, gfx1101, gfx1102, gfx1103, gfx110x, gfx1150, gfx1151, gfx1152, gfx1153, gfx115x
+  gfx12: gfx12-0, gfx1200, gfx1201, gfx1250
+  gfx9: gfx900, gfx906, gfx908, gfx90a, gfx90c, gfx942, gfx950
 Enter the GFX architecture (for example, gfx1030): gfx1030
 Pinning stable ROCm packages to 10.0.0 for gfx1030
 Installing stable requirements for gfx1030
 Using Python 3.12.9 environment at: venv-stable
-Audited 14 packages in 6ms
+Audited 14 packages in 7ms
 Using Python 3.12.9 environment at: venv-stable
 Audited 11 packages in 8ms
 Installing nightly requirements for gfx1030
 Using Python 3.12.9 environment at: venv-nightly
-Audited 14 packages in 6ms
+Audited 14 packages in 7ms
 Using Python 3.12.9 environment at: venv-nightly
 Audited 11 packages in 9ms
+
 Running stable normal benchmark; recording stable-results.md
 
 === Stable benchmark output (also saved to stable-results.md) ===
-==============================================================================
+=======================================================
+
 conv2d ch256-k(3, 3)-d(1, 1)-0
-native: miopen torch
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   3.782 ms
-phased included
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   4.205 ms
-  Torch / included   0.90x
-==============================================================================
+
+A 2D convolution with 256 channels, a 3x3 kernel, and dilation 1x1.
+
+MIOpen:
+  input:                      (8, 256, 128, 128)
+  torch.dtype:                torch.float16
+  Algorithm:                  ConvBinWinogradRxSf2x3g1
+
+  Measured latency:           3.831 ms
+
+=======================================================
+
 conv2d ch256-k(3, 3)-d(2, 2)-1
-native: miopen torch
-  Algorithm          GemmFwdRest
-  Measured latency   8.356 ms
-phased included
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   4.996 ms
-  Torch / included   1.67x
-==============================================================================
+
+A 2D convolution with 256 channels, a 3x3 kernel, and dilation 2x2.
+
+MIOpen:
+  input:                      (8, 256, 128, 128)
+  torch.dtype:                torch.float16
+  Algorithm:                  GemmFwdRest
+
+  Measured latency:           8.384 ms
+
+=======================================================
+
 conv2d ch256-k(3, 3)-d(3, 3)-2
-native: miopen torch
-  Algorithm          GemmFwdRest
-  Measured latency   8.474 ms
-phased included
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   5.956 ms
-  Torch / included   1.42x
-==============================================================================
+
+A 2D convolution with 256 channels, a 3x3 kernel, and dilation 3x3.
+
+MIOpen:
+  input:                      (8, 256, 128, 128)
+  torch.dtype:                torch.float16
+  Algorithm:                  GemmFwdRest
+
+  Measured latency:           8.591 ms
+
+=======================================================
+
 conv2d ch256-k(5, 5)-d(1, 1)-0
-native: miopen torch
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   13.359 ms
-phased included
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   13.921 ms
-  Torch / included   0.96x
-==============================================================================
+
+A 2D convolution with 256 channels, a 5x5 kernel, and dilation 1x1.
+
+MIOpen:
+  input:                      (8, 256, 128, 128)
+  torch.dtype:                torch.float16
+  Algorithm:                  ConvBinWinogradRxSf2x3g1
+
+  Measured latency:           13.155 ms
+
+=======================================================
+
 conv2d ch256-k(5, 5)-d(2, 2)-1
-native: miopen torch
-  Algorithm          GemmFwdRest
-  Measured latency   22.781 ms
-phased included
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   14.797 ms
-  Torch / included   1.54x
-==============================================================================
+
+A 2D convolution with 256 channels, a 5x5 kernel, and dilation 2x2.
+
+MIOpen:
+  input:                      (8, 256, 128, 128)
+  torch.dtype:                torch.float16
+  Algorithm:                  GemmFwdRest
+
+  Measured latency:           22.866 ms
+
+=======================================================
+
 conv2d ch128-k(3, 3)-d(1, 1)-0
-native: miopen torch
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.581 ms
-phased included
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.851 ms
-  Torch / included   0.85x
-==============================================================================
+
+A 2D convolution with 128 channels, a 3x3 kernel, and dilation 1x1.
+
+MIOpen:
+  input:                      (8, 128, 128, 128)
+  torch.dtype:                torch.float16
+  Algorithm:                  ConvBinWinogradRxSf2x3g1
+
+  Measured latency:           1.665 ms
+
+=======================================================
+
 conv2d ch128-k(3, 3)-d(2, 2)-1
-native: miopen torch
-  Algorithm          GemmFwdRest
-  Measured latency   3.532 ms
-phased included
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   2.257 ms
-  Torch / included   1.56x
-==============================================================================
+
+A 2D convolution with 128 channels, a 3x3 kernel, and dilation 2x2.
+
+MIOpen:
+  input:                      (8, 128, 128, 128)
+  torch.dtype:                torch.float16
+  Algorithm:                  GemmFwdRest
+
+  Measured latency:           3.378 ms
+
+=======================================================
+
 conv2d ch128-k(3, 3)-d(3, 3)-2
-native: miopen torch
-  Algorithm          GemmFwdRest
-  Measured latency   3.471 ms
-phased included
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   2.541 ms
-  Torch / included   1.37x
-==============================================================================
+
+A 2D convolution with 128 channels, a 3x3 kernel, and dilation 3x3.
+
+MIOpen:
+  input:                      (8, 128, 128, 128)
+  torch.dtype:                torch.float16
+  Algorithm:                  GemmFwdRest
+
+  Measured latency:           3.456 ms
+
+=======================================================
+
 conv2d ch128-k(5, 5)-d(1, 1)-0
-native: miopen torch
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   3.665 ms
-phased included
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   3.962 ms
-  Torch / included   0.93x
-==============================================================================
+
+A 2D convolution with 128 channels, a 5x5 kernel, and dilation 1x1.
+
+MIOpen:
+  input:                      (8, 128, 128, 128)
+  torch.dtype:                torch.float16
+  Algorithm:                  ConvBinWinogradRxSf2x3g1
+
+  Measured latency:           3.604 ms
+
+=======================================================
+
 conv2d ch128-k(5, 5)-d(2, 2)-1
-native: miopen torch
-  Algorithm          GemmFwdRest
-  Measured latency   7.116 ms
-phased included
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   4.507 ms
-  Torch / included   1.58x
-==============================================================================
+
+A 2D convolution with 128 channels, a 5x5 kernel, and dilation 2x2.
+
+MIOpen:
+  input:                      (8, 128, 128, 128)
+  torch.dtype:                torch.float16
+  Algorithm:                  GemmFwdRest
+
+  Measured latency:           7.151 ms
+
+=======================================================
+
 conv2d ch64-k(3, 3)-d(1, 1)-0
-native: miopen torch
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   0.888 ms
-phased included
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.029 ms
-  Torch / included   0.86x
-==============================================================================
+
+A 2D convolution with 64 channels, a 3x3 kernel, and dilation 1x1.
+
+MIOpen:
+  input:                      (8, 64, 128, 128)
+  torch.dtype:                torch.float16
+  Algorithm:                  ConvBinWinogradRxSf2x3g1
+
+  Measured latency:           1.003 ms
+
+=======================================================
+
 conv2d ch64-k(3, 3)-d(2, 2)-1
-native: miopen torch
-  Algorithm          GemmFwdRest
-  Measured latency   2.190 ms
-phased included
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.289 ms
-  Torch / included   1.70x
-==============================================================================
+
+A 2D convolution with 64 channels, a 3x3 kernel, and dilation 2x2.
+
+MIOpen:
+  input:                      (8, 64, 128, 128)
+  torch.dtype:                torch.float16
+  Algorithm:                  GemmFwdRest
+
+  Measured latency:           2.354 ms
+
+=======================================================
+
 conv2d ch64-k(3, 3)-d(3, 3)-2
-native: miopen torch
-  Algorithm          GemmFwdRest
-  Measured latency   2.395 ms
-phased included
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.514 ms
-  Torch / included   1.58x
-==============================================================================
+
+A 2D convolution with 64 channels, a 3x3 kernel, and dilation 3x3.
+
+MIOpen:
+  input:                      (8, 64, 128, 128)
+  torch.dtype:                torch.float16
+  Algorithm:                  GemmFwdRest
+
+  Measured latency:           2.264 ms
+
+=======================================================
+
 conv2d ch64-k(5, 5)-d(1, 1)-0
-native: miopen torch
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.500 ms
-phased included
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.548 ms
-  Torch / included   0.97x
-==============================================================================
+
+A 2D convolution with 64 channels, a 5x5 kernel, and dilation 1x1.
+
+MIOpen:
+  input:                      (8, 64, 128, 128)
+  torch.dtype:                torch.float16
+  Algorithm:                  ConvBinWinogradRxSf2x3g1
+
+  Measured latency:           1.522 ms
+
+=======================================================
+
 conv2d ch64-k(5, 5)-d(2, 2)-1
-native: miopen torch
-  Algorithm          GemmFwdRest
-  Measured latency   3.873 ms
-phased included
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.801 ms
-  Torch / included   2.15x
+
+A 2D convolution with 64 channels, a 5x5 kernel, and dilation 2x2.
+
+MIOpen:
+  input:                      (8, 64, 128, 128)
+  torch.dtype:                torch.float16
+  Algorithm:                  GemmFwdRest
+
+  Measured latency:           3.883 ms
+
+
 Running nightly normal benchmark; recording nightly-results.md
 
 === Nightly benchmark output (also saved to nightly-results.md) ===
-==============================================================================
+=======================================================
+
 conv2d ch256-k(3, 3)-d(1, 1)-0
-native: miopen torch
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   3.778 ms
-phased included
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   4.124 ms
-  Torch / included   0.92x
-==============================================================================
+
+A 2D convolution with 256 channels, a 3x3 kernel, and dilation 1x1.
+
+MIOpen:
+  input:                      (8, 256, 128, 128)
+  torch.dtype:                torch.float16
+  Algorithm:                  ConvBinWinogradRxSf2x3g1
+
+  Measured latency:           3.759 ms
+
+=======================================================
+
 conv2d ch256-k(3, 3)-d(2, 2)-1
-native: miopen torch
-  Algorithm          GemmFwdRest
-  Measured latency   8.127 ms
-phased included
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   4.965 ms
-  Torch / included   1.64x
-==============================================================================
+
+A 2D convolution with 256 channels, a 3x3 kernel, and dilation 2x2.
+
+MIOpen:
+  input:                      (8, 256, 128, 128)
+  torch.dtype:                torch.float16
+  Algorithm:                  GemmFwdRest
+
+  Measured latency:           8.192 ms
+
+=======================================================
+
 conv2d ch256-k(3, 3)-d(3, 3)-2
-native: miopen torch
-  Algorithm          GemmFwdRest
-  Measured latency   8.453 ms
-phased included
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   5.772 ms
-  Torch / included   1.46x
-==============================================================================
+
+A 2D convolution with 256 channels, a 3x3 kernel, and dilation 3x3.
+
+MIOpen:
+  input:                      (8, 256, 128, 128)
+  torch.dtype:                torch.float16
+  Algorithm:                  GemmFwdRest
+
+  Measured latency:           8.421 ms
+
+=======================================================
+
 conv2d ch256-k(5, 5)-d(1, 1)-0
-native: miopen torch
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   13.220 ms
-phased included
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   13.891 ms
-  Torch / included   0.95x
-==============================================================================
+
+A 2D convolution with 256 channels, a 5x5 kernel, and dilation 1x1.
+
+MIOpen:
+  input:                      (8, 256, 128, 128)
+  torch.dtype:                torch.float16
+  Algorithm:                  ConvBinWinogradRxSf2x3g1
+
+  Measured latency:           12.970 ms
+
+=======================================================
+
 conv2d ch256-k(5, 5)-d(2, 2)-1
-native: miopen torch
-  Algorithm          GemmFwdRest
-  Measured latency   22.554 ms
-phased included
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   14.771 ms
-  Torch / included   1.53x
-==============================================================================
+
+A 2D convolution with 256 channels, a 5x5 kernel, and dilation 2x2.
+
+MIOpen:
+  input:                      (8, 256, 128, 128)
+  torch.dtype:                torch.float16
+  Algorithm:                  GemmFwdRest
+
+  Measured latency:           22.568 ms
+
+=======================================================
+
 conv2d ch128-k(3, 3)-d(1, 1)-0
-native: miopen torch
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.563 ms
-phased included
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.799 ms
-  Torch / included   0.87x
-==============================================================================
+
+A 2D convolution with 128 channels, a 3x3 kernel, and dilation 1x1.
+
+MIOpen:
+  input:                      (8, 128, 128, 128)
+  torch.dtype:                torch.float16
+  Algorithm:                  ConvBinWinogradRxSf2x3g1
+
+  Measured latency:           1.608 ms
+
+=======================================================
+
 conv2d ch128-k(3, 3)-d(2, 2)-1
-native: miopen torch
-  Algorithm          GemmFwdRest
-  Measured latency   3.310 ms
-phased included
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   2.284 ms
-  Torch / included   1.45x
-==============================================================================
+
+A 2D convolution with 128 channels, a 3x3 kernel, and dilation 2x2.
+
+MIOpen:
+  input:                      (8, 128, 128, 128)
+  torch.dtype:                torch.float16
+  Algorithm:                  GemmFwdRest
+
+  Measured latency:           3.293 ms
+
+=======================================================
+
 conv2d ch128-k(3, 3)-d(3, 3)-2
-native: miopen torch
-  Algorithm          GemmFwdRest
-  Measured latency   3.485 ms
-phased included
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   2.582 ms
-  Torch / included   1.35x
-==============================================================================
+
+A 2D convolution with 128 channels, a 3x3 kernel, and dilation 3x3.
+
+MIOpen:
+  input:                      (8, 128, 128, 128)
+  torch.dtype:                torch.float16
+  Algorithm:                  GemmFwdRest
+
+  Measured latency:           3.431 ms
+
+=======================================================
+
 conv2d ch128-k(5, 5)-d(1, 1)-0
-native: miopen torch
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   3.565 ms
-phased included
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   3.829 ms
-  Torch / included   0.93x
-==============================================================================
+
+A 2D convolution with 128 channels, a 5x5 kernel, and dilation 1x1.
+
+MIOpen:
+  input:                      (8, 128, 128, 128)
+  torch.dtype:                torch.float16
+  Algorithm:                  ConvBinWinogradRxSf2x3g1
+
+  Measured latency:           3.620 ms
+
+=======================================================
+
 conv2d ch128-k(5, 5)-d(2, 2)-1
-native: miopen torch
-  Algorithm          GemmFwdRest
-  Measured latency   6.670 ms
-phased included
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   4.346 ms
-  Torch / included   1.53x
-==============================================================================
+
+A 2D convolution with 128 channels, a 5x5 kernel, and dilation 2x2.
+
+MIOpen:
+  input:                      (8, 128, 128, 128)
+  torch.dtype:                torch.float16
+  Algorithm:                  GemmFwdRest
+
+  Measured latency:           6.653 ms
+
+=======================================================
+
 conv2d ch64-k(3, 3)-d(1, 1)-0
-native: miopen torch
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.045 ms
-phased included
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.187 ms
-  Torch / included   0.88x
-==============================================================================
+
+A 2D convolution with 64 channels, a 3x3 kernel, and dilation 1x1.
+
+MIOpen:
+  input:                      (8, 64, 128, 128)
+  torch.dtype:                torch.float16
+  Algorithm:                  ConvBinWinogradRxSf2x3g1
+
+  Measured latency:           1.011 ms
+
+=======================================================
+
 conv2d ch64-k(3, 3)-d(2, 2)-1
-native: miopen torch
-  Algorithm          GemmFwdRest
-  Measured latency   2.281 ms
-phased included
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.387 ms
-  Torch / included   1.64x
-==============================================================================
+
+A 2D convolution with 64 channels, a 3x3 kernel, and dilation 2x2.
+
+MIOpen:
+  input:                      (8, 64, 128, 128)
+  torch.dtype:                torch.float16
+  Algorithm:                  GemmFwdRest
+
+  Measured latency:           2.309 ms
+
+=======================================================
+
 conv2d ch64-k(3, 3)-d(3, 3)-2
-native: miopen torch
-  Algorithm          GemmFwdRest
-  Measured latency   2.292 ms
-phased included
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.437 ms
-  Torch / included   1.59x
-==============================================================================
+
+A 2D convolution with 64 channels, a 3x3 kernel, and dilation 3x3.
+
+MIOpen:
+  input:                      (8, 64, 128, 128)
+  torch.dtype:                torch.float16
+  Algorithm:                  GemmFwdRest
+
+  Measured latency:           2.182 ms
+
+=======================================================
+
 conv2d ch64-k(5, 5)-d(1, 1)-0
-native: miopen torch
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.494 ms
-phased included
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.665 ms
-  Torch / included   0.90x
-==============================================================================
+
+A 2D convolution with 64 channels, a 5x5 kernel, and dilation 1x1.
+
+MIOpen:
+  input:                      (8, 64, 128, 128)
+  torch.dtype:                torch.float16
+  Algorithm:                  ConvBinWinogradRxSf2x3g1
+
+  Measured latency:           1.543 ms
+
+=======================================================
+
 conv2d ch64-k(5, 5)-d(2, 2)-1
-native: miopen torch
-  Algorithm          GemmFwdRest
-  Measured latency   3.854 ms
-phased included
-  Algorithm          ConvBinWinogradRxSf2x3g1
-  Measured latency   1.906 ms
-  Torch / included   2.02x
+
+A 2D convolution with 64 channels, a 5x5 kernel, and dilation 2x2.
+
+MIOpen:
+  input:                      (8, 64, 128, 128)
+  torch.dtype:                torch.float16
+  Algorithm:                  GemmFwdRest
+
+  Measured latency:           3.890 ms
+
 
 ==============================================================================
 Torchvision validation
 Torchvision validation (stable): PASS - torch=2.13.0+rocm10.0.0, torchvision=0.28.0+rocm10.0.0, amd-torchvision-device=0.28.0+rocm10.0.0; CPU and GPU NMS passed
-Torchvision validation (nightly): PASS - torch=2.16.0a0+rocm10.3.0a20261031, torchvision=0.30.0a0+rocm10.3.0a20261031, amd-torchvision-device=0.30.0a0+rocm10.3.0a20261031; CPU and GPU NMS passed
+Torchvision validation (nightly): PASS - torch=2.16.0a0+rocm10.3.0a20261101, torchvision=0.30.0a0+rocm10.3.0a20261101, amd-torchvision-device=0.30.0a0+rocm10.3.0a20261101; CPU and GPU NMS passed
 ==============================================================================
 
 ==============================================================================
 Stable / nightly benchmark summary
   Matched configurations 15
-  Stable total / average   86.963 ms / 5.798 ms
-  Nightly total / average  85.691 ms / 5.713 ms
+  Stable total / average   87.107 ms / 5.807 ms
+  Nightly total / average  85.450 ms / 5.697 ms
   Preferred packages       nightly
   Comparison report        E:\ROCm-Check\comparison.md
 
 Recommended pip install command:
-python -m pip install --upgrade --pre --index-url https://nightly.repo.amd.com/rocm/pytorch/whl-next --extra-index-url https://nightly.repo.amd.com/rocm/core/whl-next amd-torch-device-gfx1030==2.16.0a0+rocm10.3.0a20261031 amd-torchvision-device-gfx1030==0.30.0a0+rocm10.3.0a20261031 rocm==10.3.0a20261031 rocm-bootstrap==0.3.0 rocm-sdk-core==10.3.0a20261031 rocm-sdk-devel==10.3.0a20261101 rocm-sdk-device-gfx1030==10.3.0a20261031 rocm-sdk-libraries==10.3.0a20261031 torch==2.16.0a0+rocm10.3.0a20261031 torchaudio==2.11.1+rocm10.3.0a20261031 torchvision==0.30.0a0+rocm10.3.0a20261031
+python -m pip install --upgrade --pre --index-url https://nightly.repo.amd.com/rocm/pytorch/whl-next --extra-index-url https://nightly.repo.amd.com/rocm/core/whl-next amd-torch-device-gfx1030==2.16.0a0+rocm10.3.0a20261101 amd-torchvision-device-gfx1030==0.30.0a0+rocm10.3.0a20261101 rocm==10.3.0a20261101 rocm-bootstrap==0.3.0 rocm-sdk-core==10.3.0a20261101 rocm-sdk-devel==10.3.0a20261102 rocm-sdk-device-gfx1030==10.3.0a20261101 rocm-sdk-libraries==10.3.0a20261101 torch==2.16.0a0+rocm10.3.0a20261101 torchaudio==2.11.1+rocm10.3.0a20261101 torchvision==0.30.0a0+rocm10.3.0a20261101
 ==============================================================================
 ```
