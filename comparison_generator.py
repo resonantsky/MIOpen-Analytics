@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 
 
-_ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _PACKAGE_LINE = re.compile(
     r"^([a-zA-Z0-9_.-]+)\s+([a-zA-Z0-9_.+!-]+)\s*$", re.MULTILINE
 )
@@ -15,12 +15,16 @@ _MIOPEN_HEADING = re.compile(r"^(?:native\s*:|miopen\s*:)", re.IGNORECASE)
 _MEASURED_LATENCY = re.compile(r"^\s*Measured latency\s*:?\s*(.*)$", re.IGNORECASE)
 
 
+def strip_ansi(text):
+    return _ANSI_ESCAPE.sub("", text)
+
+
 def parse_file(filepath):
-    content = _ANSI_ESCAPE.sub("", Path(filepath).read_text(encoding="utf-8"))
+    content = strip_ansi(Path(filepath).read_text(encoding="utf-8"))
     
     packages = {}
     for package, version in _PACKAGE_LINE.findall(content):
-        if package.lower() not in {"package", "-------"}:
+        if package.lower() != "package" and not set(package) <= {"-"}:
             packages[package.lower()] = version
         
     benchmarks = []

@@ -466,7 +466,7 @@ def run_and_tee(command: list[str], output) -> None:
         if process.stdout is None:
             raise RuntimeError("Benchmark subprocess stdout was not captured.")
         for line in process.stdout:
-            output.write(line)
+            output.write(comparison_generator.strip_ansi(line))
             output.flush()
             sys.stdout.write(line)
             sys.stdout.flush()
@@ -674,17 +674,18 @@ def prepare_environment(
 
 
 def run_analysis(name: str, architecture: str, python: Path, mode: str) -> Path:
-    results_file = ROOT / f"{name}-results.txt"
+    results_file = ROOT / f"{name}-results.md"
     check_script = ROOT / f"miopen-check-{mode}.py"
     print(f"\nRunning {name} {mode} benchmark; recording {results_file.name}", flush=True)
     with results_file.open("w", encoding="utf-8") as output:
         output.write(
-            f"MIOpen benchmark results\n"
-            f"Repository: {REPOSITORIES[name]['pytorch']}\n"
-            f"Core repository: {REPOSITORIES[name]['core']}\n"
-            f"Architecture: {architecture}\n"
+            f"# MIOpen benchmark results\n\n"
+            f"Repository: {REPOSITORIES[name]['pytorch']}  \n"
+            f"Core repository: {REPOSITORIES[name]['core']}  \n"
+            f"Architecture: {architecture}  \n"
             f"Benchmark: {check_script.name}\n\n"
-            "=== Installed packages ===\n"
+            "## Installed packages\n\n"
+            "```text\n"
         )
         subprocess.run(
             [str(python), "-m", "pip", "list", "--format=columns"],
@@ -693,10 +694,13 @@ def run_analysis(name: str, architecture: str, python: Path, mode: str) -> Path:
             stderr=subprocess.STDOUT,
             check=True,
         )
-        output.write("\n=== Benchmark output ===\n")
+        output.write("\n```\n\n## Benchmark output\n\n```text\n")
         output.flush()
         print(f"\n=== {name.title()} benchmark output (also saved to {results_file.name}) ===")
-        run_and_tee([str(python), "-u", str(check_script)], output)
+        try:
+            run_and_tee([str(python), "-u", str(check_script)], output)
+        finally:
+            output.write("\n```\n")
     return results_file
 
 

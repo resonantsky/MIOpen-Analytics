@@ -6,7 +6,7 @@
 
 Run `python MIOpen-Check.py` and enter a supported GFX architecture.
 
-The runner creates `venv-stable` and `venv-nightly`, installs the requirements from the corresponding AMD repository, runs the normal benchmark in each environment, and writes `stable-results.txt`, `nightly-results.txt`, and `comparison.md` in the repository root.
+The runner creates `venv-stable` and `venv-nightly`, installs the requirements from the corresponding AMD repository, runs the normal benchmark in each environment, and writes `stable-results.md`, `nightly-results.md`, and `comparison.md` in the repository root. The result files are Markdown reports with ANSI color codes removed.
 
 Shared Python dependencies are installed from PyPI; ROCm and PyTorch packages are resolved independently from each repository's PyTorch and core wheel indexes so their versions match that channel.
 
@@ -77,9 +77,9 @@ Using Python 3.12.9 environment at: venv-nightly
 Audited 14 packages in 6ms
 Using Python 3.12.9 environment at: venv-nightly
 Audited 11 packages in 9ms
-Running stable normal benchmark; recording stable-results.txt
+Running stable normal benchmark; recording stable-results.md
 
-=== Stable benchmark output (also saved to stable-results.txt) ===
+=== Stable benchmark output (also saved to stable-results.md) ===
 ==============================================================================
 conv2d ch256-k(3, 3)-d(1, 1)-0
 native: miopen torch
@@ -215,9 +215,9 @@ phased included
   Algorithm          ConvBinWinogradRxSf2x3g1
   Measured latency   1.801 ms
   Torch / included   2.15x
-Running nightly normal benchmark; recording nightly-results.txt
+Running nightly normal benchmark; recording nightly-results.md
 
-=== Nightly benchmark output (also saved to nightly-results.txt) ===
+=== Nightly benchmark output (also saved to nightly-results.md) ===
 ==============================================================================
 conv2d ch256-k(3, 3)-d(1, 1)-0
 native: miopen torch
