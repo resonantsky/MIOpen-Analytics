@@ -2,6 +2,7 @@
 
 import atexit
 import ctypes
+import operator
 import os
 import re
 import sys
@@ -68,7 +69,6 @@ _logging_capture = None
 IS_WINDOWS = sys.platform == "win32"
 
 if IS_WINDOWS:
-    import msvcrt
     STD_ERROR_HANDLE = -12
     kernel32 = ctypes.windll.kernel32
 
@@ -77,6 +77,12 @@ if IS_WINDOWS:
         ucrt = ctypes.CDLL("ucrtbase.dll")
     except OSError:
         ucrt = None
+
+
+def _get_os_handle(fd: int) -> int:
+    import msvcrt
+
+    return msvcrt.get_osfhandle(fd)
 
 
 def _forward_stderr(fd, line):
@@ -127,7 +133,7 @@ class MIOpenLogRedirect:
             if IS_WINDOWS:
                 # Intercept Win32 OS Level Handle
                 self.old_std_handle = kernel32.GetStdHandle(STD_ERROR_HANDLE)
-                new_os_handle = msvcrt.get_osfhandle(self.write_fd)
+                new_os_handle = _get_os_handle(self.write_fd)
                 kernel32.SetStdHandle(STD_ERROR_HANDLE, new_os_handle)
 
                 # Intercept Universal CRT level handle for loaded DLLs
@@ -212,14 +218,15 @@ class MIOpenLogRedirect:
         if self.reader is not None:
             self.reader.join()
 
-        self.safe_stderr.close()
+        if self.safe_stderr is not None:
+            self.safe_stderr.close()
         os.close(self.saved_stderr)
         os.close(self.read_fd)
         return False
 
 
 def start_miopen_logging():
-    """Start filtering native MIOpen diagnostics without changing the environment."""
+
     global _logging_capture  # pylint: disable=global-statement
     if _logging_capture is None:
         try:
@@ -274,22 +281,29 @@ def capture_miopen(operation: str = "convolution", repeats: int = 1):
 def _extract_algorithms(lines):
     return [match.group(1) for line in lines if (match := _ALGORITHM_PATTERN.search(line))]
 
+
+def _spatial_ints(values: str | tuple[int | str, ...], name: str) -> tuple[int, ...]:
+    if isinstance(values, str):
+        raise ValueError(f"Phased convolution requires numeric {name}")
+    integers = []
+    for value in values:
+        if isinstance(value, str):
+            raise ValueError(f"Phased convolution requires numeric {name}")
+        integers.append(operator.index(value))
+    return tuple(integers)
+
+
+def _format_spatial(values: tuple[int, ...]) -> str:
+    return "x".join(str(value) for value in values)
+
+
 _dilated_use_phases = {}
 
 def _conv1d_phases(x: torch.Tensor, conv: torch.nn.Conv1d):
-    """A dilated conv1d computed as `dilation` undilated convs over the strided phases.
 
-    MIOpen has no usable dilated 1D kernel on gfx1100. Measured on 8x512x2048, kernel 3: the same
-    FLOPs run at 18.7 TFLOP/s undilated and 0.3 TFLOP/s at dilation 3 - a 62x penalty, and these
-    ResBlocks are most of the generator. A dilation-D convolution is exactly D independent undilated
-    convolutions over x[..., i::D], so this routes around that kernel; measured 22-33x faster with a
-    relative error of 1e-6, which is fp32 rounding.
-
-    ROCm GPUs only. CPU handles dilation fine and the reshape would just cost copies there, and
-    cuDNN is untested so NVIDIA keeps the native kernel.
-    """
-    d = conv.dilation[0]
-    length, pad = x.shape[-1], conv.padding[0]
+    d, = _spatial_ints(conv.dilation, "dilation")
+    pad, = _spatial_ints(conv.padding, "padding")
+    length = x.shape[-1]
     x = torch.nn.functional.pad(x, (pad, pad))
     # phases must divide evenly; the remainder is padded off the end, so it only ever lands
     # beyond `length` and is dropped by the final slice
@@ -306,13 +320,14 @@ def _conv1d_phases(x: torch.Tensor, conv: torch.nn.Conv1d):
 
 def _conv2d_phases(x: torch.Tensor, conv: torch.nn.Conv2d):
     """Compute a dilated Conv2d with arbitrary stride (including stride=3) as independent undilated phases."""
-    stride_h, stride_w = conv.stride
-    dilation_h, dilation_w = conv.dilation
-    padding_h, padding_w = conv.padding
+    stride_h, stride_w = _spatial_ints(conv.stride, "stride")
+    dilation_h, dilation_w = _spatial_ints(conv.dilation, "dilation")
+    padding_h, padding_w = _spatial_ints(conv.padding, "padding")
+    kernel_h, kernel_w = _spatial_ints(conv.kernel_size, "kernel size")
     height, width = x.shape[-2:]
 
     # 1. Pad input tensor
-    x = torch.nn.functional.pad(x, (padding_w, padding_w, padding_h, padding_h))  # type: ignore
+    x = torch.nn.functional.pad(x, (padding_w, padding_w, padding_h, padding_h))
 
     # 2. Pad remainder to cleanly divide by dilation factors
     rem_h = (-x.shape[-2]) % dilation_h
@@ -334,9 +349,6 @@ def _conv2d_phases(x: torch.Tensor, conv: torch.nn.Conv2d):
     out = torch.nn.functional.conv2d(phases, conv.weight, conv.bias, groups=conv.groups)
 
     # 5. Calculate target output shape following standard PyTorch Conv2d spatial formulas
-    out_h = (height + 2 * padding_h - dilation_h * (conv.kernel_size[0] - 1) - 1) // stride_h + 1 # pyright: ignore[reportOperatorIssue]
-    out_w = (width + 2 * padding_w - dilation_w * (conv.kernel_size[1] - 1) - 1) // stride_w + 1 # pyright: ignore[reportOperatorIssue]
-
     phase_h, phase_w = out.shape[-2:]
     channels_out = conv.weight.shape[0]
 
@@ -348,19 +360,20 @@ def _conv2d_phases(x: torch.Tensor, conv: torch.nn.Conv2d):
     )
 
     # 7. Apply spatial slice matching stride-3 (or arbitrary stride) sub-sampling
-    return out[..., :height + 2 * padding_h - dilation_h * (conv.kernel_size[0] - 1):stride_h,  # pyright: ignore[reportOperatorIssue]
-                    :width + 2 * padding_w - dilation_w * (conv.kernel_size[1] - 1):stride_w] # pyright: ignore[reportOperatorIssue]
+    return out[..., :height + 2 * padding_h - dilation_h * (kernel_h - 1):stride_h,
+                    :width + 2 * padding_w - dilation_w * (kernel_w - 1):stride_w]
 
 
 def _conv3d_phases(x: torch.Tensor, conv: torch.nn.Conv3d):
     """Compute a dilated Conv3d with arbitrary stride as independent undilated phases."""
-    stride_d, stride_h, stride_w = conv.stride
-    dilation_d, dilation_h, dilation_w = conv.dilation
-    padding_d, padding_h, padding_w = conv.padding
+    stride_d, stride_h, stride_w = _spatial_ints(conv.stride, "stride")
+    dilation_d, dilation_h, dilation_w = _spatial_ints(conv.dilation, "dilation")
+    padding_d, padding_h, padding_w = _spatial_ints(conv.padding, "padding")
+    kernel_d, kernel_h, kernel_w = _spatial_ints(conv.kernel_size, "kernel size")
     depth, height, width = x.shape[-3:]
 
     # 1. Pad input tensor
-    x = torch.nn.functional.pad(x, (padding_w, padding_w, padding_h, padding_h, padding_d, padding_d)) # pyright: ignore[reportArgumentType]
+    x = torch.nn.functional.pad(x, (padding_w, padding_w, padding_h, padding_h, padding_d, padding_d))
 
     # 2. Pad remainder to cleanly divide by dilation factors
     rem_d = (-x.shape[-3]) % dilation_d
@@ -391,10 +404,6 @@ def _conv3d_phases(x: torch.Tensor, conv: torch.nn.Conv3d):
     out = torch.nn.functional.conv3d(phases, conv.weight, conv.bias, groups=conv.groups)
 
     # 5. Calculate target output shape following standard PyTorch Conv3d spatial formulas
-    out_d = (depth + 2 * padding_d - dilation_d * (conv.kernel_size[0] - 1) - 1) // stride_d + 1
-    out_h = (height + 2 * padding_h - dilation_h * (conv.kernel_size[1] - 1) - 1) // stride_h + 1
-    out_w = (width + 2 * padding_w - dilation_w * (conv.kernel_size[2] - 1) - 1) // stride_w + 1
-
     phase_d, phase_h, phase_w = out.shape[-3:]
     channels_out = conv.weight.shape[0]
 
@@ -406,20 +415,14 @@ def _conv3d_phases(x: torch.Tensor, conv: torch.nn.Conv3d):
     )
 
     # 7. Compute full un-strided dimensions and apply strided slicing
-    full_d = depth + 2 * padding_d - dilation_d * (conv.kernel_size[0] - 1)
-    full_h = height + 2 * padding_h - dilation_h * (conv.kernel_size[1] - 1)
-    full_w = width + 2 * padding_w - dilation_w * (conv.kernel_size[2] - 1)
+    full_d = depth + 2 * padding_d - dilation_d * (kernel_d - 1)
+    full_h = height + 2 * padding_h - dilation_h * (kernel_h - 1)
+    full_w = width + 2 * padding_w - dilation_w * (kernel_w - 1)
 
     return out[..., :full_d:stride_d, :full_h:stride_h, :full_w:stride_w]
 
 def conv1d_dilated(x: torch.Tensor, conv: torch.nn.Conv1d):
-    """Dilated conv1d, via whichever path is actually faster on this device.
 
-    MIOpen's dilated 1D kernel is pathological on gfx1100 - measured 62x slower than the identical
-    FLOPs undilated - but other architectures and later ROCm releases may not share that, and cuDNN
-    was never tested. So this measures both paths once per workload rather than deciding by vendor,
-    and the native kernel keeps ties. One probe costs a few milliseconds against a run of hours.
-    """
     if conv.dilation[0] == 1 or not x.is_cuda:
         return conv(x)
 
@@ -470,19 +473,25 @@ def benchmark(fn, warmup=2, repeats=5):
 def _dtype():
     return getattr(torch, DTYPE)
 
-def print_native_result(name, native_ms, native_algorithms, inputs):
+def print_native_result(name, description, native_ms, native_algorithms, inputs):
     cyan = "\033[36m"
     green = "\033[92m"
+    yellow = "\033[93m"
     magenta = "\033[95m"
     dim = "\033[2m"
     reset = "\033[0m"
     algorithm = native_algorithms[-1] if native_algorithms else "not emitted (cached or unavailable)"
-    print(f"{cyan}{'=' * 78}{reset}")
-    print(f"{cyan}{name}{reset}")
-    print(f"  {'input':<12}{tuple(inputs.shape)} {inputs.dtype}")
-    print(f"{magenta}native: miopen{reset} {dim}torch{reset}")
-    print(f"  {dim}{'Algorithm':<18}{reset} {green}{algorithm}{reset}")
-    print(f"  {dim}{'Measured latency':<18}{reset} {cyan}{native_ms:.3f} ms{reset}")
+    print(f"{cyan}{'=' * 55}{reset}")
+    print(f"{yellow}{name}{reset}")
+    print()
+    print(f"{dim}{description}{reset}")
+    print()
+    print(f"{magenta}MIOpen:{reset}")
+    print(f"  {dim}{'input:':<28}{reset}{tuple(inputs.shape)}")
+    print(f"  {dim}{'torch.dtype:':<28}{reset}{inputs.dtype}")
+    print(f"  {dim}{'Algorithm:':<28}{reset}{green}{algorithm}{reset}")
+    print()
+    print(f"  {dim}{'Measured latency:':<28}{reset}{cyan}{native_ms:.3f} ms{reset}")
 
 
 def run_conv1d_suite():
@@ -494,8 +503,12 @@ def run_conv1d_suite():
                     nn.Conv1d(channels, channels, kernel_size=kernel_size, stride=1, padding=padding, dilation=dilation)
                 ).to(DEVICE, dtype=_dtype())
                 name = f"conv1d ch{channels}-k{kernel_size}-{index}"
+                description = (
+                    f"A 1D convolution with {channels} channels, a {kernel_size}-element kernel, "
+                    f"padding {padding}, and dilation {dilation}."
+                )
                 native_ms, native_algorithms = benchmark(lambda conv=test_conv, inputs=test_input: conv(inputs), WARMUP_RUNS, BENCHMARK_RUNS)
-                print_native_result(name, native_ms, native_algorithms, test_input)
+                print_native_result(name, description, native_ms, native_algorithms, test_input)
 
 
 def run_conv2d_suite():
@@ -506,8 +519,12 @@ def run_conv2d_suite():
                 test_input = torch.randn(CONV2D_BATCH_SIZE, channels, *CONV2D_SIZE, device=DEVICE, dtype=_dtype())
                 test_conv = nn.Conv2d(channels, channels, kernel_size=kernel_size, padding=padding, dilation=dilation).to(DEVICE, dtype=_dtype())
                 name = f"conv2d ch{channels}-k{kernel_size}-d{dilation}-{index}"
+                description = (
+                    f"A 2D convolution with {channels} channels, a {_format_spatial(kernel_size)} kernel, "
+                    f"and dilation {_format_spatial(dilation)}."
+                )
                 native_ms, native_algorithms = benchmark(lambda conv=test_conv, inputs=test_input: conv(inputs), WARMUP_RUNS, BENCHMARK_RUNS)
-                print_native_result(name, native_ms, native_algorithms, test_input)
+                print_native_result(name, description, native_ms, native_algorithms, test_input)
 
 
 def run_conv3d_suite():
@@ -518,8 +535,12 @@ def run_conv3d_suite():
                 test_input = torch.randn(CONV3D_BATCH_SIZE, channels, *CONV3D_SIZE, device=DEVICE, dtype=_dtype())
                 test_conv = nn.Conv3d(channels, channels, kernel_size=kernel_size, padding=padding, dilation=dilation).to(DEVICE, dtype=_dtype())
                 name = f"conv3d ch{channels}-k{kernel_size}-d{dilation}-{index}"
+                description = (
+                    f"A 3D convolution with {channels} channels, a {_format_spatial(kernel_size)} kernel, "
+                    f"and dilation {_format_spatial(dilation)}."
+                )
                 native_ms, native_algorithms = benchmark(lambda conv=test_conv, inputs=test_input: conv(inputs), WARMUP_RUNS, BENCHMARK_RUNS)
-                print_native_result(name, native_ms, native_algorithms, test_input)
+                print_native_result(name, description, native_ms, native_algorithms, test_input)
 
 
 if __name__ == "__main__":

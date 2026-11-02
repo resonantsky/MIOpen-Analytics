@@ -9,6 +9,10 @@ _PACKAGE_LINE = re.compile(
     r"^([a-zA-Z0-9_.-]+)\s+([a-zA-Z0-9_.+!-]+)\s*$", re.MULTILINE
 )
 _LATENCY = re.compile(r"([\d.]+)\s*ms")
+_BENCHMARK_SEPARATOR = re.compile(r"(?m)^\s*={10,}\s*$")
+_CONFIGURATION = re.compile(r"^conv[123]d\b.*$", re.IGNORECASE)
+_MIOPEN_HEADING = re.compile(r"^(?:native\s*:|miopen\s*:)", re.IGNORECASE)
+_MEASURED_LATENCY = re.compile(r"^\s*Measured latency\s*:?\s*(.*)$", re.IGNORECASE)
 
 
 def parse_file(filepath):
@@ -20,26 +24,31 @@ def parse_file(filepath):
             packages[package.lower()] = version
         
     benchmarks = []
-    blocks = content.split('==============================================================================')
+    blocks = _BENCHMARK_SEPARATOR.split(content)
     for block in blocks:
-        if 'conv' in block.lower():
-            lines = [l.strip() for l in block.strip().split('\n') if l.strip()]
-            config_name = lines[0] if lines else ""
-            native_latency = None
-            for index, line in enumerate(lines):
-                if 'native:' in line.lower():
-                    for measurement in lines[index + 1 : index + 5]:
-                        if 'Measured latency' in measurement:
-                            match = _LATENCY.search(measurement)
-                            if match:
-                                native_latency = float(match.group(1))
-                            break
-                    break
-            if native_latency is not None:
+        lines = [line.strip() for line in block.splitlines() if line.strip()]
+        config = next((line for line in lines if _CONFIGURATION.fullmatch(line)), None)
+        if config is None:
+            continue
+
+        miopen_index = next(
+            (index for index, line in enumerate(lines) if _MIOPEN_HEADING.match(line)),
+            None,
+        )
+        if miopen_index is None:
+            continue
+
+        for line in lines[miopen_index + 1 :]:
+            latency_line = _MEASURED_LATENCY.match(line)
+            if latency_line is None:
+                continue
+            match = _LATENCY.search(latency_line.group(1))
+            if match:
                 benchmarks.append({
-                    'config': config_name,
-                    'native_latency': native_latency,
+                    "config": config,
+                    "native_latency": float(match.group(1)),
                 })
+            break
                 
     return packages, benchmarks
 

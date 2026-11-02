@@ -1,4 +1,5 @@
 import os
+import operator
 import re
 import threading
 import time
@@ -90,13 +91,29 @@ class _MIOpenStderrCapture:
 def _extract_algorithms(lines):
     return [match.group(1) for line in lines if (match := _ALGORITHM_PATTERN.search(line))]
 
+
+def _spatial_ints(values: str | tuple[int | str, ...], name: str) -> tuple[int, ...]:
+    if isinstance(values, str):
+        raise ValueError(f"Phased convolution requires numeric {name}")
+    integers = []
+    for value in values:
+        if isinstance(value, str):
+            raise ValueError(f"Phased convolution requires numeric {name}")
+        integers.append(operator.index(value))
+    return tuple(integers)
+
+
+def _format_spatial(values: tuple[int, ...]) -> str:
+    return "x".join(str(value) for value in values)
+
+
 _dilated_use_phases = {}
 
 def _conv1d_phases(x: torch.Tensor, conv: torch.nn.Conv1d):
-
-    d = conv.dilation[0]
-    length, pad = x.shape[-1], conv.padding[0]
-    x = torch.nn.functional.pad(x, (pad, pad)) # type: ignore
+    d, = _spatial_ints(conv.dilation, "dilation")
+    pad, = _spatial_ints(conv.padding, "padding")
+    length = x.shape[-1]
+    x = torch.nn.functional.pad(x, (pad, pad))
     # phases must divide evenly; the remainder is padded off the end, so it only ever lands
     # beyond `length` and is dropped by the final slice
     rem = (-x.shape[-1]) % d
@@ -111,13 +128,14 @@ def _conv1d_phases(x: torch.Tensor, conv: torch.nn.Conv1d):
 
 
 def _conv2d_phases(x: torch.Tensor, conv: torch.nn.Conv2d):
-    stride_h, stride_w = conv.stride
-    dilation_h, dilation_w = conv.dilation
-    padding_h, padding_w = conv.padding
+    stride_h, stride_w = _spatial_ints(conv.stride, "stride")
+    dilation_h, dilation_w = _spatial_ints(conv.dilation, "dilation")
+    padding_h, padding_w = _spatial_ints(conv.padding, "padding")
+    kernel_h, kernel_w = _spatial_ints(conv.kernel_size, "kernel size")
     height, width = x.shape[-2:]
 
     # 1. Pad input tensor
-    x = torch.nn.functional.pad(x, (padding_w, padding_w, padding_h, padding_h))  # type: ignore
+    x = torch.nn.functional.pad(x, (padding_w, padding_w, padding_h, padding_h))
 
     # 2. Pad remainder to cleanly divide by dilation factors
     rem_h = (-x.shape[-2]) % dilation_h
@@ -139,9 +157,6 @@ def _conv2d_phases(x: torch.Tensor, conv: torch.nn.Conv2d):
     out = torch.nn.functional.conv2d(phases, conv.weight, conv.bias, groups=conv.groups)
 
     # 5. Calculate target output shape following standard PyTorch Conv2d spatial formulas
-    out_h = (height + 2 * padding_h - dilation_h * (conv.kernel_size[0] - 1) - 1) // stride_h + 1 # pyright: ignore[reportOperatorIssue]
-    out_w = (width + 2 * padding_w - dilation_w * (conv.kernel_size[1] - 1) - 1) // stride_w + 1 # pyright: ignore[reportOperatorIssue]
-
     phase_h, phase_w = out.shape[-2:]
     channels_out = conv.weight.shape[0]
 
@@ -153,19 +168,20 @@ def _conv2d_phases(x: torch.Tensor, conv: torch.nn.Conv2d):
     )
 
     # 7. Apply spatial slice matching stride-3 (or arbitrary stride) sub-sampling
-    return out[..., :height + 2 * padding_h - dilation_h * (conv.kernel_size[0] - 1):stride_h,  # pyright: ignore[reportOperatorIssue]
-                    :width + 2 * padding_w - dilation_w * (conv.kernel_size[1] - 1):stride_w] # pyright: ignore[reportOperatorIssue]
+    return out[..., :height + 2 * padding_h - dilation_h * (kernel_h - 1):stride_h,
+                    :width + 2 * padding_w - dilation_w * (kernel_w - 1):stride_w]
 
 
 def _conv3d_phases(x: torch.Tensor, conv: torch.nn.Conv3d):
     """Compute a dilated Conv3d with arbitrary stride as independent undilated phases."""
-    stride_d, stride_h, stride_w = conv.stride
-    dilation_d, dilation_h, dilation_w = conv.dilation
-    padding_d, padding_h, padding_w = conv.padding
+    stride_d, stride_h, stride_w = _spatial_ints(conv.stride, "stride")
+    dilation_d, dilation_h, dilation_w = _spatial_ints(conv.dilation, "dilation")
+    padding_d, padding_h, padding_w = _spatial_ints(conv.padding, "padding")
+    kernel_d, kernel_h, kernel_w = _spatial_ints(conv.kernel_size, "kernel size")
     depth, height, width = x.shape[-3:]
 
     # 1. Pad input tensor
-    x = torch.nn.functional.pad(x, (padding_w, padding_w, padding_h, padding_h, padding_d, padding_d)) # pyright: ignore[reportArgumentType]
+    x = torch.nn.functional.pad(x, (padding_w, padding_w, padding_h, padding_h, padding_d, padding_d))
 
     # 2. Pad remainder to cleanly divide by dilation factors
     rem_d = (-x.shape[-3]) % dilation_d
@@ -196,10 +212,6 @@ def _conv3d_phases(x: torch.Tensor, conv: torch.nn.Conv3d):
     out = torch.nn.functional.conv3d(phases, conv.weight, conv.bias, groups=conv.groups)
 
     # 5. Calculate target output shape following standard PyTorch Conv3d spatial formulas
-    out_d = (depth + 2 * padding_d - dilation_d * (conv.kernel_size[0] - 1) - 1) // stride_d + 1 # type: ignore
-    out_h = (height + 2 * padding_h - dilation_h * (conv.kernel_size[1] - 1) - 1) // stride_h + 1 # type: ignore
-    out_w = (width + 2 * padding_w - dilation_w * (conv.kernel_size[2] - 1) - 1) // stride_w + 1 # type: ignore
-
     phase_d, phase_h, phase_w = out.shape[-3:]
     channels_out = conv.weight.shape[0]
 
@@ -211,9 +223,9 @@ def _conv3d_phases(x: torch.Tensor, conv: torch.nn.Conv3d):
     )
 
     # 7. Compute full un-strided dimensions and apply strided slicing
-    full_d = depth + 2 * padding_d - dilation_d * (conv.kernel_size[0] - 1) # type: ignore
-    full_h = height + 2 * padding_h - dilation_h * (conv.kernel_size[1] - 1) # type: ignore
-    full_w = width + 2 * padding_w - dilation_w * (conv.kernel_size[2] - 1) # type: ignore
+    full_d = depth + 2 * padding_d - dilation_d * (kernel_d - 1)
+    full_h = height + 2 * padding_h - dilation_h * (kernel_h - 1)
+    full_w = width + 2 * padding_w - dilation_w * (kernel_w - 1)
 
     return out[..., :full_d:stride_d, :full_h:stride_h, :full_w:stride_w]
 
@@ -269,19 +281,25 @@ def _dtype():
     return getattr(torch, DTYPE)
 
 
-def print_native_result(name, native_ms, native_algorithms, inputs):
+def print_native_result(name, description, native_ms, native_algorithms, inputs):
     cyan = "\033[36m"
     green = "\033[92m"
+    yellow = "\033[93m"
     magenta = "\033[95m"
     dim = "\033[2m"
     reset = "\033[0m"
     algorithm = native_algorithms[-1] if native_algorithms else "not emitted (cached or unavailable)"
-    print(f"{cyan}{'=' * 78}{reset}")
-    print(f"{cyan}{name}{reset}")
-    print(f"  {'input':<12}{tuple(inputs.shape)} {inputs.dtype}")
-    print(f"{magenta}native: miopen{reset} {dim}torch{reset}")
-    print(f"  {dim}{'Algorithm':<18}{reset} {green}{algorithm}{reset}")
-    print(f"  {dim}{'Measured latency':<18}{reset} {cyan}{native_ms:.3f} ms{reset}")
+    print(f"{cyan}{'=' * 55}{reset}")
+    print(f"{yellow}{name}{reset}")
+    print()
+    print(f"{dim}{description}{reset}")
+    print()
+    print(f"{magenta}MIOpen:{reset}")
+    print(f"  {dim}{'input:':<28}{reset}{tuple(inputs.shape)}")
+    print(f"  {dim}{'torch.dtype:':<28}{reset}{inputs.dtype}")
+    print(f"  {dim}{'Algorithm:':<28}{reset}{green}{algorithm}{reset}")
+    print()
+    print(f"  {dim}{'Measured latency:':<28}{reset}{cyan}{native_ms:.3f} ms{reset}")
 
 
 def run_conv1d_suite():
@@ -293,12 +311,16 @@ def run_conv1d_suite():
                     nn.Conv1d(channels, channels, kernel_size=kernel_size, stride=1, padding=padding, dilation=dilation)
                 ).to(DEVICE, dtype=_dtype())
                 name = f"conv1d ch{channels}-k{kernel_size}-{index}"
+                description = (
+                    f"A 1D convolution with {channels} channels, a {kernel_size}-element kernel, "
+                    f"padding {padding}, and dilation {dilation}."
+                )
                 native_ms, native_algorithms = benchmark(
                     lambda conv=test_conv, inputs=test_input: conv(inputs),
                     WARMUP_RUNS,
                     BENCHMARK_RUNS,
                 )
-                print_native_result(name, native_ms, native_algorithms, test_input)
+                print_native_result(name, description, native_ms, native_algorithms, test_input)
 
 
 def run_conv2d_suite():
@@ -309,12 +331,16 @@ def run_conv2d_suite():
                 test_input = torch.randn(CONV2D_BATCH_SIZE, channels, *CONV2D_SIZE, device=DEVICE, dtype=_dtype())
                 test_conv = nn.Conv2d(channels, channels, kernel_size=kernel_size, padding=padding, dilation=dilation).to(DEVICE, dtype=_dtype())
                 name = f"conv2d ch{channels}-k{kernel_size}-d{dilation}-{index}"
+                description = (
+                    f"A 2D convolution with {channels} channels, a {_format_spatial(kernel_size)} kernel, "
+                    f"and dilation {_format_spatial(dilation)}."
+                )
                 native_ms, native_algorithms = benchmark(
                     lambda conv=test_conv, inputs=test_input: conv(inputs),
                     WARMUP_RUNS,
                     BENCHMARK_RUNS,
                 )
-                print_native_result(name, native_ms, native_algorithms, test_input)
+                print_native_result(name, description, native_ms, native_algorithms, test_input)
 
 
 def run_conv3d_suite():
@@ -325,12 +351,16 @@ def run_conv3d_suite():
                 test_input = torch.randn(CONV3D_BATCH_SIZE, channels, *CONV3D_SIZE, device=DEVICE, dtype=_dtype())
                 test_conv = nn.Conv3d(channels, channels, kernel_size=kernel_size, padding=padding, dilation=dilation).to(DEVICE, dtype=_dtype())
                 name = f"conv3d ch{channels}-k{kernel_size}-d{dilation}-{index}"
+                description = (
+                    f"A 3D convolution with {channels} channels, a {_format_spatial(kernel_size)} kernel, "
+                    f"and dilation {_format_spatial(dilation)}."
+                )
                 native_ms, native_algorithms = benchmark(
                     lambda conv=test_conv, inputs=test_input: conv(inputs),
                     WARMUP_RUNS,
                     BENCHMARK_RUNS,
                 )
-                print_native_result(name, native_ms, native_algorithms, test_input)
+                print_native_result(name, description, native_ms, native_algorithms, test_input)
 
 
 if __name__ == "__main__":
