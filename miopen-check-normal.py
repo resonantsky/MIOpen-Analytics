@@ -290,6 +290,7 @@ def print_native_result(name, description, native_ms, native_algorithms, inputs)
     reset = "\033[0m"
     algorithm = native_algorithms[-1] if native_algorithms else "not emitted (cached or unavailable)"
     print(f"{cyan}{'=' * 55}{reset}")
+    print()
     print(f"{yellow}{name}{reset}")
     print()
     print(f"{dim}{description}{reset}")
@@ -300,6 +301,7 @@ def print_native_result(name, description, native_ms, native_algorithms, inputs)
     print(f"  {dim}{'Algorithm:':<28}{reset}{green}{algorithm}{reset}")
     print()
     print(f"  {dim}{'Measured latency:':<28}{reset}{cyan}{native_ms:.3f} ms{reset}")
+    print()
 
 
 def run_conv1d_suite():
