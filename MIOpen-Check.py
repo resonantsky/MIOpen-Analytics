@@ -418,6 +418,7 @@ def install_command(
             UV_EXECUTABLE,
             "pip",
             "install",
+            "--link-mode=copy",
             "--python",
             str(python),
             "--index-url",
