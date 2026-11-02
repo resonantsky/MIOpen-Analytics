@@ -675,7 +675,7 @@ def prepare_environment(
 def run_analysis(name: str, architecture: str, python: Path, mode: str) -> Path:
     results_file = ROOT / f"{name}-results.txt"
     check_script = ROOT / f"miopen-check-{mode}.py"
-    print(f"Running {name} {mode} benchmark; recording {results_file.name}", flush=True)
+    print(f"\nRunning {name} {mode} benchmark; recording {results_file.name}", flush=True)
     with results_file.open("w", encoding="utf-8") as output:
         output.write(
             f"MIOpen benchmark results\n"
