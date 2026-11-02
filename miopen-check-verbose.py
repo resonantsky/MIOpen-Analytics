@@ -470,36 +470,7 @@ def benchmark(fn, warmup=2, repeats=5):
 def _dtype():
     return getattr(torch, DTYPE)
 
-def print_result(name, native_ms, native_algorithms, custom_ms, custom_algorithms):
-    cyan = "\033[36m"
-    green = "\033[92m"
-    yellow = "\033[93m"
-    magenta = "\033[95m"
-    dim = "\033[2m"
-    reset = "\033[0m"
-
-    def field(label, value, color):
-        return f"  {dim}{label:<18}{reset} {color}{value}{reset}"
-
-    def algorithm_fields(algorithms):
-        if not algorithms:
-            return [field("Algorithm", "not emitted (cached or unavailable)", dim)]
-        return [field("Algorithm", algorithms[-1], green)]
-
-    ratio = native_ms / custom_ms
-    print(f"{cyan}{'=' * 78}{reset}")
-    print(f"{cyan}{name}{reset}")
-    print(f"{magenta}native: miopen{reset} {dim}torch{reset}")
-    for line in algorithm_fields(native_algorithms):
-        print(line)
-    print(field("Measured latency", f"{native_ms:.3f} ms", cyan))
-    print(f"{magenta}phased{reset} {dim}included{reset}")
-    for line in algorithm_fields(custom_algorithms):
-        print(line)
-    print(field("Measured latency", f"{custom_ms:.3f} ms", cyan))
-    print(field("Torch / included", f"{ratio:.2f}x", yellow))
-
-def print_native_result(name, native_ms, native_algorithms):
+def print_native_result(name, native_ms, native_algorithms, inputs):
     cyan = "\033[36m"
     green = "\033[92m"
     magenta = "\033[95m"
@@ -508,6 +479,7 @@ def print_native_result(name, native_ms, native_algorithms):
     algorithm = native_algorithms[-1] if native_algorithms else "not emitted (cached or unavailable)"
     print(f"{cyan}{'=' * 78}{reset}")
     print(f"{cyan}{name}{reset}")
+    print(f"  {'input':<12}{tuple(inputs.shape)} {inputs.dtype}")
     print(f"{magenta}native: miopen{reset} {dim}torch{reset}")
     print(f"  {dim}{'Algorithm':<18}{reset} {green}{algorithm}{reset}")
     print(f"  {dim}{'Measured latency':<18}{reset} {cyan}{native_ms:.3f} ms{reset}")
@@ -523,8 +495,7 @@ def run_conv1d_suite():
                 ).to(DEVICE, dtype=_dtype())
                 name = f"conv1d ch{channels}-k{kernel_size}-{index}"
                 native_ms, native_algorithms = benchmark(lambda conv=test_conv, inputs=test_input: conv(inputs), WARMUP_RUNS, BENCHMARK_RUNS)
-                phases_ms, phases_algorithms = benchmark(lambda conv=test_conv, inputs=test_input: _conv1d_phases(inputs, conv), WARMUP_RUNS, BENCHMARK_RUNS)
-                print_result(name, native_ms, native_algorithms, phases_ms, phases_algorithms)
+                print_native_result(name, native_ms, native_algorithms, test_input)
 
 
 def run_conv2d_suite():
@@ -536,8 +507,7 @@ def run_conv2d_suite():
                 test_conv = nn.Conv2d(channels, channels, kernel_size=kernel_size, padding=padding, dilation=dilation).to(DEVICE, dtype=_dtype())
                 name = f"conv2d ch{channels}-k{kernel_size}-d{dilation}-{index}"
                 native_ms, native_algorithms = benchmark(lambda conv=test_conv, inputs=test_input: conv(inputs), WARMUP_RUNS, BENCHMARK_RUNS)
-                phases_ms, phases_algorithms = benchmark(lambda conv=test_conv, inputs=test_input: _conv2d_phases(inputs, conv), WARMUP_RUNS, BENCHMARK_RUNS)
-                print_result(name, native_ms, native_algorithms, phases_ms, phases_algorithms)
+                print_native_result(name, native_ms, native_algorithms, test_input)
 
 
 def run_conv3d_suite():
@@ -549,8 +519,7 @@ def run_conv3d_suite():
                 test_conv = nn.Conv3d(channels, channels, kernel_size=kernel_size, padding=padding, dilation=dilation).to(DEVICE, dtype=_dtype())
                 name = f"conv3d ch{channels}-k{kernel_size}-d{dilation}-{index}"
                 native_ms, native_algorithms = benchmark(lambda conv=test_conv, inputs=test_input: conv(inputs), WARMUP_RUNS, BENCHMARK_RUNS)
-                phases_ms, phases_algorithms = benchmark(lambda conv=test_conv, inputs=test_input: _conv3d_phases(inputs, conv), WARMUP_RUNS, BENCHMARK_RUNS)
-                print_result(name, native_ms, native_algorithms, phases_ms, phases_algorithms)
+                print_native_result(name, native_ms, native_algorithms, test_input)
 
 
 if __name__ == "__main__":
