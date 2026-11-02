@@ -290,16 +290,27 @@ def print_architecture_wheel_status(
     red = "\033[91m"
     yellow = "\033[93m"
     reset = "\033[0m"
+    colors = {
+        "available": green,
+        "missing": red,
+        "unknown": yellow,
+    }
 
     print("AMD package availability (stable + nightly):")
-    for architecture, probes in availability.items():
-        status = architecture_wheel_status(probes)
-        color, label = {
-            "available": (green, "PACKAGE SET OK"),
-            "missing": (red, "PACKAGES MISSING"),
-            "unknown": (yellow, "CHECK UNKNOWN"),
-        }[status]
-        print(f"  {color}{architecture:<8} {label}{reset}")
+    for prefix in ("gfx10", "gfx11", "gfx12", "gfx9"):
+        architectures = [
+            architecture
+            for architecture in ARCHITECTURES
+            if architecture.startswith(prefix) and architecture in availability
+        ]
+        if not architectures:
+            continue
+        colored_architectures = (
+            f"{colors[architecture_wheel_status(availability[architecture])]}"
+            f"{architecture}{reset}"
+            for architecture in architectures
+        )
+        print(f"  {prefix}: " + ", ".join(colored_architectures))
 
 
 def architecture_warning(
