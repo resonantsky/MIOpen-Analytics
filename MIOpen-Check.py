@@ -5,6 +5,7 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from html.parser import HTMLParser
+import os
 import re
 import shutil
 import subprocess
@@ -22,6 +23,14 @@ import comparison_generator
 
 ROOT = Path(__file__).resolve().parent
 REQUIREMENTS = ROOT / "requirements.txt"
+IS_LINUX = os.name == "posix" and hasattr(os, "uname") and os.uname().sysname == "Linux"
+PYTORCH_ROCM_REPOSITORIES = {
+    "10.0": "https://download.pytorch.org/whl/rocm10.0",
+    "10.1": "https://download.pytorch.org/whl/rocm10.1",
+}
+PYTORCH_ROCM_REQUIRED_PACKAGES = ("torch", "torchvision")
+PYTORCH_ROCM_OPTIONAL_PACKAGES = ("torchaudio",)
+PYTORCH_ROCM_PACKAGES = PYTORCH_ROCM_REQUIRED_PACKAGES + PYTORCH_ROCM_OPTIONAL_PACKAGES
 REPOSITORIES = {
     "stable": {
         "pytorch": "https://stable.repo.amd.com/rocm/pytorch/whl-next",
@@ -93,6 +102,12 @@ AMD_PACKAGE_NAMES = {
     "rocm-sdk-devel",
     "rocm-sdk-libraries",
 }
+TRITON_PACKAGE_NAMES = {
+    "triton",
+    "triton-rocm",
+    "pytorch-triton",
+    "pytorch-triton-rocm",
+}
 UV_EXECUTABLE = shutil.which("uv")
 WHEEL_CHECK_TIMEOUT = 12
 
@@ -125,6 +140,43 @@ def parse_architecture(value: str) -> str:
     return architecture
 
 
+def pytorch_rocm_release(architecture: str) -> str:
+    return "10.0" if architecture in STABLE_ROCM_10_0_ARCHITECTURES else "10.1"
+
+
+def _linux_platform_tag_compatible(platform_tags: set, runtime_platform: str) -> bool:
+    if "any" in platform_tags or runtime_platform in platform_tags:
+        return True
+    if not IS_LINUX:
+        return False
+
+    architecture = runtime_platform.split("linux_", 1)[-1]
+    confstr = getattr(os, "confstr", None)
+    libc = confstr("CS_GNU_LIBC_VERSION") if confstr is not None else None
+    libc_match = re.fullmatch(r"glibc (\d+)\.(\d+)", libc or "")
+    if libc_match is None:
+        return False
+    libc_version = tuple(map(int, libc_match.groups()))
+
+    legacy_manylinux = {
+        "manylinux1": (2, 5),
+        "manylinux2010": (2, 12),
+        "manylinux2014": (2, 17),
+    }
+    for tag in platform_tags:
+        match = re.fullmatch(r"manylinux_(\d+)_(\d+)_(.+)", tag)
+        if match and match.group(3) == architecture:
+            required_version = (int(match.group(1)), int(match.group(2)))
+        else:
+            match = re.fullmatch(r"(manylinux1|manylinux2010|manylinux2014)_(.+)", tag)
+            if match is None or match.group(2) != architecture:
+                continue
+            required_version = legacy_manylinux[match.group(1)]
+        if libc_version >= required_version:
+            return True
+    return False
+
+
 def _wheel_matches_runtime(filename: str) -> Tuple[bool, Optional[str]]:
     try:
         prefix, python_tag, abi_tag, platform_tag = filename[:-4].rsplit("-", 3)
@@ -132,7 +184,7 @@ def _wheel_matches_runtime(filename: str) -> Tuple[bool, Optional[str]]:
     except ValueError:
         return False, None
 
-    major, minor = sys.version_info[:2]
+    major, minor = (3, 12) if IS_LINUX else sys.version_info[:2]
     python_tags = set(python_tag.split("."))
     supported_python_tags = {f"py{major}", f"py{major}{minor}", "py3"}
     if sys.implementation.name == "cpython":
@@ -149,13 +201,16 @@ def _wheel_matches_runtime(filename: str) -> Tuple[bool, Optional[str]]:
 
     runtime_platform = sysconfig.get_platform().lower().replace("-", "_")
     platform_tags = set(platform_tag.lower().split("."))
-    if "any" not in platform_tags and runtime_platform not in platform_tags:
+    if not _linux_platform_tag_compatible(platform_tags, runtime_platform):
         return False, None
     return True, unquote(version)
 
 
 def _probe_package_artifact(
-    index_url: str, package: str, required_version: Optional[str]
+    index_url: str,
+    package: str,
+    required_version: Optional[str],
+    required_version_fragment: Optional[str] = None,
 ) -> WheelProbe:
     url = f"{index_url}/{package}/"
     request = Request(url, headers={"Accept": "text/html"})
@@ -184,7 +239,14 @@ def _probe_package_artifact(
         if not filename.endswith(".whl"):
             continue
         compatible, version = _wheel_matches_runtime(filename)
-        if compatible and version is not None:
+        if (
+            compatible
+            and version is not None
+            and (
+                required_version_fragment is None
+                or required_version_fragment in version
+            )
+        ):
             versions.add(version)
 
     if required_version is not None:
@@ -235,10 +297,24 @@ def check_architecture_wheels() -> Dict[str, Dict[Tuple[str, str], WheelProbe]]:
                 queries[key] = (index_url, package, required_version)
                 architecture_queries[architecture].append(key)
 
+        if IS_LINUX:
+            rocm_release = pytorch_rocm_release(architecture)
+            channel = f"pytorch-rocm{rocm_release}"
+            for package in PYTORCH_ROCM_PACKAGES:
+                key = (channel, package, None)
+                queries[key] = (
+                    f"{PYTORCH_ROCM_REPOSITORIES[rocm_release]}",
+                    package,
+                    None,
+                    f"+rocm{rocm_release}",
+                )
+                architecture_queries[architecture].append(key)
+
     results = {}
     print(
-        f"Checking required AMD package artifacts for Python {sys.version_info.major}."
-        f"{sys.version_info.minor} ({sysconfig.get_platform()})...",
+        f"Checking required package artifacts for Python "
+        f"{3 if IS_LINUX else sys.version_info.major}."
+        f"{12 if IS_LINUX else sys.version_info.minor} ({sysconfig.get_platform()})...",
         flush=True,
     )
     with ThreadPoolExecutor(max_workers=16) as executor:
@@ -269,6 +345,22 @@ def architecture_wheel_status(
     return "unknown"
 
 
+def official_pytorch_package_status(
+    probes: Mapping[str, WheelProbe]
+) -> Tuple[bool, Tuple[str, ...], Tuple[str, ...]]:
+    unavailable_required = tuple(
+        package
+        for package in PYTORCH_ROCM_REQUIRED_PACKAGES
+        if (probe := probes.get(package)) is None or probe.available is not True
+    )
+    unavailable_optional = tuple(
+        package
+        for package in PYTORCH_ROCM_OPTIONAL_PACKAGES
+        if (probe := probes.get(package)) is None or probe.available is not True
+    )
+    return not unavailable_required, unavailable_required, unavailable_optional
+
+
 def print_supported_architectures() -> None:
     lines = ["Supported architectures:"]
     groups = ("gfx10", "gfx11", "gfx12", "gfx9")
@@ -296,21 +388,51 @@ def print_architecture_wheel_status(
         "unknown": yellow,
     }
 
-    print("AMD package availability (stable + nightly):")
-    for prefix in ("gfx10", "gfx11", "gfx12", "gfx9"):
-        architectures = [
-            architecture
-            for architecture in ARCHITECTURES
-            if architecture.startswith(prefix) and architecture in availability
-        ]
-        if not architectures:
-            continue
-        colored_architectures = (
-            f"{colors[architecture_wheel_status(availability[architecture])]}"
-            f"{architecture}{reset}"
-            for architecture in architectures
+    def print_channel_status(title: str, include_probe) -> None:
+        print(title)
+        for prefix in ("gfx10", "gfx11", "gfx12", "gfx9"):
+            architectures = [
+                architecture
+                for architecture in ARCHITECTURES
+                if architecture.startswith(prefix) and architecture in availability
+            ]
+            colored_architectures = []
+            for architecture in architectures:
+                probes = {
+                    key: probe
+                    for key, probe in availability[architecture].items()
+                    if include_probe(key[0], key[1])
+                }
+                colored_architectures.append(
+                    f"{colors[architecture_wheel_status(probes)]}{architecture}{reset}"
+                )
+            if colored_architectures:
+                print(f"  {prefix}: " + ", ".join(colored_architectures))
+
+    if IS_LINUX:
+        print_channel_status(
+            "AMD package availability (stable + nightly):",
+            lambda channel, _package: not channel.startswith("pytorch-rocm"),
         )
-        print(f"  {prefix}: " + ", ".join(colored_architectures))
+        print_channel_status(
+            "Official PyTorch availability (Python 3.12; torch + torchvision required):",
+            lambda channel, package: (
+                channel.startswith("pytorch-rocm")
+                and package in PYTORCH_ROCM_REQUIRED_PACKAGES
+            ),
+        )
+        print_channel_status(
+            "Optional official PyTorch torchaudio availability:",
+            lambda channel, package: (
+                channel.startswith("pytorch-rocm")
+                and package in PYTORCH_ROCM_OPTIONAL_PACKAGES
+            ),
+        )
+    else:
+        print_channel_status(
+            "AMD package availability (stable + nightly):",
+            lambda _channel, _package: True,
+        )
 
 
 def architecture_warning(
@@ -412,6 +534,7 @@ def install_command(
     index_url: str,
     extra_index_url: Optional[str] = None,
     constraints: Optional[Path] = None,
+    allow_prerelease: bool = False,
 ) -> list[str]:
     if UV_EXECUTABLE is not None:
         command = [
@@ -446,7 +569,7 @@ def install_command(
         command.extend(["--extra-index-url", extra_index_url])
     if constraints is not None:
         command.extend(["--constraint", str(constraints)])
-    if extra_index_url is not None:
+    if extra_index_url is not None or allow_prerelease:
         command.append("--pre")
     command.extend(["-r", str(requirements)])
     return command
@@ -511,7 +634,11 @@ def recommended_install_command(
     runtime_packages = {
         package: version
         for package, version in packages.items()
-        if package in AMD_PACKAGE_NAMES or package in architecture_packages
+        if (
+            package in AMD_PACKAGE_NAMES
+            or package in architecture_packages
+            or package in TRITON_PACKAGE_NAMES
+        )
     }
     if not runtime_packages:
         raise ValueError(f"No ROCm or PyTorch packages found in {results_file}.")
@@ -525,6 +652,42 @@ def recommended_install_command(
         f"--index-url {repositories['pytorch']} "
         f"--extra-index-url {repositories['core']} "
         f"{package_specs}"
+    )
+
+
+def recommended_official_pytorch_install_command(
+    results_file: Path, validation_passed: bool
+) -> Optional[str]:
+    if not validation_passed:
+        return None
+
+    packages, _ = comparison_generator.parse_file(results_file)
+    required_packages = ("torch", "torchvision")
+    if any(
+        package not in packages or not packages[package]
+        or packages[package].lower() == "none"
+        for package in required_packages
+    ):
+        return None
+
+    repository = comparison_generator.read_metadata(results_file, "Repository")
+    if repository not in PYTORCH_ROCM_REPOSITORIES.values():
+        return None
+
+    install_packages = list(required_packages)
+    if packages.get("torchaudio") and packages["torchaudio"].lower() != "none":
+        install_packages.append("torchaudio")
+    install_packages.extend(
+        package
+        for package in sorted(TRITON_PACKAGE_NAMES)
+        if packages.get(package) and packages[package].lower() != "none"
+    )
+    package_specs = " ".join(
+        f"{package}=={packages[package]}" for package in install_packages
+    )
+    return (
+        "python -m pip install --upgrade --pre "
+        f"--index-url {repository} {package_specs}"
     )
 
 
@@ -585,6 +748,121 @@ print(
     return True, result.stdout.strip()
 
 
+def validate_pytorch_runtime(python: Path) -> Tuple[bool, str]:
+    validation_script = """
+import torch
+import torchvision
+
+if not torch.version.hip:
+    raise RuntimeError("The installed PyTorch build does not report a ROCm runtime")
+if not torch.cuda.is_available():
+    raise RuntimeError("PyTorch reports no ROCm device")
+
+boxes = torch.tensor(
+    [[0, 0, 10, 10], [1, 1, 11, 11]], dtype=torch.float32, device="cpu"
+)
+scores = torch.tensor([0.9, 0.8], dtype=torch.float32, device="cpu")
+if torchvision.ops.nms(boxes, scores, 0.5).tolist() != [0]:
+    raise RuntimeError("torchvision CPU NMS returned an unexpected result")
+if torchvision.ops.nms(boxes.cuda(), scores.cuda(), 0.5).tolist() != [0]:
+    raise RuntimeError("torchvision GPU NMS returned an unexpected result")
+print(
+    f"torch={torch.__version__}, torchvision={torchvision.__version__}, "
+    f"HIP={torch.version.hip}; CPU and GPU NMS passed"
+)
+"""
+    try:
+        result = subprocess.run(
+            [str(python), "-c", validation_script],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return False, "official PyTorch ROCm validation timed out"
+
+    if result.returncode:
+        detail = (result.stderr or result.stdout).strip()
+        if not detail:
+            detail = f"validation exited with status {result.returncode}"
+        return False, detail
+    return True, result.stdout.strip()
+
+
+def print_linux_validation_summary(
+    validations: Mapping[str, Tuple[bool, str]],
+) -> None:
+    cyan = "\033[36m"
+    green = "\033[92m"
+    red = "\033[91m"
+    reset = "\033[0m"
+    print(f"\n{cyan}{'=' * 78}{reset}")
+    print(f"{cyan}Torchvision validation{reset}")
+    for name in ("stable", "nightly"):
+        if name not in validations:
+            continue
+        passed, detail = validations[name]
+        color = green if passed else red
+        status = "PASS" if passed else "FAILED"
+        print(f"{color}Torchvision validation ({name}): {status} - {detail}{reset}")
+
+    for name, (passed, detail) in validations.items():
+        if name in ("stable", "nightly"):
+            continue
+        color = green if passed else red
+        status = "PASS" if passed else "FAILED"
+        print(f"{cyan}{name} validation{reset}: {color}{status} - {detail}{reset}")
+    print(f"{cyan}{'=' * 78}{reset}", flush=True)
+
+
+def print_linux_completion_summary(
+    comparison_file: Path,
+    metrics: Mapping[str, Mapping[str, Union[float, Mapping[str, float]]]],
+    configuration_count: int,
+    preferred: str,
+    pip_command: Optional[str],
+) -> None:
+    cyan = "\033[36m"
+    green = "\033[92m"
+    yellow = "\033[93m"
+    dim = "\033[2m"
+    reset = "\033[0m"
+    print(f"\n{cyan}{'=' * 78}{reset}")
+    title = (
+        "Stable / nightly / official PyTorch benchmark summary"
+        if len(metrics) == 3
+        else "Stable / nightly benchmark summary (official PyTorch run skipped)"
+    )
+    print(f"{cyan}{title}{reset}")
+    print(
+        f"  {dim}Matched configurations{reset} "
+        f"{yellow}{configuration_count}{reset}"
+    )
+    for label, run in metrics.items():
+        print(
+            f"  {dim}{label.removesuffix('-results') + ' total / average':<34}{reset} "
+            f"{cyan}{run['total']:.3f} ms / {run['average']:.3f} ms{reset}"
+        )
+    print(
+        f"  {dim}{'Preferred packages':<34}{reset} "
+        f"{green}{preferred}{reset}"
+    )
+    print(f"  {dim}{'Comparison report':<34}{reset} {cyan}{comparison_file}{reset}")
+    if pip_command is not None:
+        print(f"\n{green}Recommended pip install command:{reset}")
+        print(f"{yellow}{pip_command}{reset}")
+    else:
+        print(
+            f"\n{yellow}No pip install recommendation: required runtime validation "
+            f"must pass and package versions must be present in the result file.{reset}"
+        )
+    print(f"{cyan}{'=' * 78}{reset}")
+
+
 def print_completion_summary(
     comparison_file: Path,
     metrics: Mapping[str, Union[int, float]],
@@ -637,17 +915,47 @@ def prepare_environment(
     common_requirements: Path,
     amd_requirements: Path,
     constraints: Optional[Path] = None,
+    repositories: Optional[Mapping[str, str]] = None,
+    allow_prerelease: bool = False,
 ) -> Path:
     environment = ROOT / f"venv-{name}"
     if not venv_python(environment).is_file():
         print(f"Creating {name} virtual environment at {environment}", flush=True)
+        if IS_LINUX and UV_EXECUTABLE is not None:
+            create_command = [
+                UV_EXECUTABLE,
+                "venv",
+                "--python",
+                "3.12",
+                "--seed",
+                str(environment),
+            ]
+        elif IS_LINUX:
+            python312 = shutil.which("python3.12")
+            if python312 is None:
+                raise SystemExit("Linux benchmark environments require uv or python3.12.")
+            create_command = [python312, "-m", "venv", str(environment)]
+        else:
+            create_command = [sys.executable, "-m", "venv", str(environment)]
         subprocess.run(
-            [sys.executable, "-m", "venv", str(environment)],
+            create_command,
             cwd=ROOT,
             check=True,
         )
+    if IS_LINUX:
+        version = subprocess.run(
+            [str(venv_python(environment)), "-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        if version != "3.12":
+            raise SystemExit(
+                f"{environment.name} uses Python {version}; Linux benchmark environments require Python 3.12."
+            )
 
-    repositories = REPOSITORIES[name]
+    repositories = repositories or REPOSITORIES[name]
     print(f"Installing {name} requirements for {architecture}", flush=True)
     environment_python = venv_python(environment)
     commands = (
@@ -658,8 +966,9 @@ def prepare_environment(
             environment_python,
             amd_requirements,
             repositories["pytorch"],
-            repositories["core"],
+            repositories.get("core"),
             constraints,
+            allow_prerelease,
         ),
     )
     for command in commands:
@@ -673,20 +982,31 @@ def prepare_environment(
     return venv_python(environment)
 
 
-def run_analysis(name: str, architecture: str, python: Path, mode: str) -> Path:
+def run_analysis(
+    name: str,
+    architecture: str,
+    python: Path,
+    mode: str,
+    repositories: Optional[Mapping[str, str]] = None,
+) -> Path:
     results_file = ROOT / f"{name}-results.md"
     check_script = ROOT / f"miopen-check-{mode}.py"
+    repositories = repositories or REPOSITORIES[name]
     print(f"\nRunning {name} {mode} benchmark; recording {results_file.name}", flush=True)
     with results_file.open("w", encoding="utf-8") as output:
-        output.write(
+        metadata = (
             f"# MIOpen benchmark results\n\n"
-            f"Repository: {REPOSITORIES[name]['pytorch']}  \n"
-            f"Core repository: {REPOSITORIES[name]['core']}  \n"
+            f"Repository: {repositories['pytorch']}  \n"
+        )
+        if "core" in repositories:
+            metadata += f"Core repository: {repositories['core']}  \n"
+        metadata += (
             f"Architecture: {architecture}  \n"
             f"Benchmark: {check_script.name}\n\n"
             "## Installed packages\n\n"
             "```text\n"
         )
+        output.write(metadata)
         subprocess.run(
             [str(python), "-m", "pip", "list", "--format=columns"],
             cwd=ROOT,
@@ -704,6 +1024,205 @@ def run_analysis(name: str, architecture: str, python: Path, mode: str) -> Path:
     return results_file
 
 
+def linux_main(mode: str, parser: argparse.ArgumentParser) -> None:
+    print(
+        f"Package installer: {'uv' if UV_EXECUTABLE is not None else 'pip'}",
+        flush=True,
+    )
+    print("Linux benchmark environments use Python 3.12.", flush=True)
+    print_supported_architectures()
+    wheel_availability = check_architecture_wheels()
+    print_architecture_wheel_status(wheel_availability)
+    try:
+        architecture = parse_architecture(
+            input("Enter the GFX architecture (for example, gfx1030): ")
+        )
+        architecture_probes = wheel_availability[architecture]
+        amd_probes = {
+            key: probe
+            for key, probe in architecture_probes.items()
+            if not key[0].startswith("pytorch-rocm")
+        }
+        warning = architecture_warning(architecture, amd_probes)
+        if warning is not None:
+            warning_color = "\033[91m" if architecture_wheel_status(
+                amd_probes
+            ) == "missing" else "\033[93m"
+            print(f"{warning_color}Warning: {warning}\033[0m", flush=True)
+        rocm_release = pytorch_rocm_release(architecture)
+        pytorch_channel = f"pytorch-rocm{rocm_release}"
+        pytorch_probes = {
+            package: probe
+            for (channel, package), probe in wheel_availability[architecture].items()
+            if channel == pytorch_channel
+        }
+        pytorch_available, unavailable_required, unavailable_optional = (
+            official_pytorch_package_status(pytorch_probes)
+        )
+        if unavailable_required:
+            detail = "; ".join(
+                f"{package}: {pytorch_probes[package].detail}"
+                if package in pytorch_probes
+                else f"{package}: not checked"
+                for package in unavailable_required
+            )
+            print(
+                f"\033[93mOfficial PyTorch ROCm {rocm_release} benchmark skipped "
+                f"for {architecture}: Python 3.12 Linux wheels are unavailable "
+                f"or unverified ({detail}). AMD benchmarks will continue.\033[0m",
+                flush=True,
+            )
+        if unavailable_optional:
+            print(
+                f"\033[93mOptional PyTorch package(s) skipped: "
+                f"{', '.join(unavailable_optional)}.\033[0m",
+                flush=True,
+            )
+        pytorch_packages = list(PYTORCH_ROCM_REQUIRED_PACKAGES)
+        pytorch_packages.extend(
+            package
+            for package in PYTORCH_ROCM_OPTIONAL_PACKAGES
+            if package not in unavailable_optional
+        )
+        common, amd = requirements_for_architecture(architecture)
+    except ValueError as error:
+        parser.error(str(error))
+
+    temporary_requirements = []
+    try:
+        requirement_sets = (
+            ("miopen-common-requirements-", common),
+            ("miopen-amd-requirements-", amd),
+            ("miopen-pytorch-requirements-", "\n".join(pytorch_packages) + "\n"),
+        )
+        for prefix, contents in requirement_sets:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                suffix=".txt",
+                prefix=prefix,
+                dir=ROOT,
+                delete=False,
+            ) as file:
+                file.write(contents)
+                temporary_requirements.append(Path(file.name))
+
+        stable_constraints = stable_runtime_constraints(architecture)
+        stable_constraints_path: Optional[Path] = None
+        if stable_constraints is not None:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                suffix=".txt",
+                prefix="miopen-stable-rocm-10.0-constraints-",
+                dir=ROOT,
+                delete=False,
+            ) as file:
+                file.write(stable_constraints)
+                stable_constraints_path = Path(file.name)
+                temporary_requirements.append(stable_constraints_path)
+            print(f"Pinning stable AMD packages to ROCm 10.0.0 for {architecture}", flush=True)
+
+        stable_python = prepare_environment(
+            "stable",
+            architecture,
+            temporary_requirements[0],
+            temporary_requirements[1],
+            stable_constraints_path,
+        )
+        nightly_python = prepare_environment(
+            "nightly", architecture, temporary_requirements[0], temporary_requirements[1]
+        )
+
+        pytorch_name = f"pytorch-rocm{rocm_release}"
+        pytorch_repositories = {
+            "pytorch": PYTORCH_ROCM_REPOSITORIES[rocm_release],
+        }
+        pytorch_python = None
+        if pytorch_available:
+            pytorch_python = prepare_environment(
+                pytorch_name,
+                architecture,
+                temporary_requirements[0],
+                temporary_requirements[2],
+                repositories=pytorch_repositories,
+                allow_prerelease=True,
+            )
+
+        stable_results = run_analysis("stable", architecture, stable_python, mode)
+        nightly_results = run_analysis("nightly", architecture, nightly_python, mode)
+        result_files = [stable_results, nightly_results]
+        pytorch_results = None
+        if pytorch_python is not None:
+            pytorch_results = run_analysis(
+                pytorch_name, architecture, pytorch_python, mode, pytorch_repositories
+            )
+            result_files.append(pytorch_results)
+
+        comparison_file = ROOT / "comparison.md"
+        subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "comparison_generator.py"),
+                *[str(result_file) for result_file in result_files],
+                "--output",
+                str(comparison_file),
+            ],
+            cwd=ROOT,
+            check=True,
+        )
+        if pytorch_python is not None:
+            metrics, common_configs = comparison_generator.aggregate_multi_metrics(result_files)
+        else:
+            two_way_metrics = comparison_generator.aggregate_metrics(
+                stable_results, nightly_results
+            )
+            metrics = {
+                "stable": {
+                    "by_config": two_way_metrics["stable_by_config"],
+                    "total": two_way_metrics["stable_total"],
+                    "average": two_way_metrics["stable_average"],
+                },
+                "nightly": {
+                    "by_config": two_way_metrics["nightly_by_config"],
+                    "total": two_way_metrics["nightly_total"],
+                    "average": two_way_metrics["nightly_average"],
+                },
+            }
+            common_configs = two_way_metrics["common_configs"]
+        validations = {
+            "stable": validate_torchvision_runtime(stable_python, architecture),
+            "nightly": validate_torchvision_runtime(nightly_python, architecture),
+        }
+        if pytorch_python is not None:
+            validations[pytorch_name] = validate_pytorch_runtime(pytorch_python)
+        print_linux_validation_summary(validations)
+        preferred = min(metrics, key=lambda label: metrics[label]["average"])
+        preferred_environment = preferred.rsplit("-results", 1)[0]
+        all_validations_passed = all(passed for passed, _detail in validations.values())
+        if preferred_environment.startswith("pytorch-rocm"):
+            pip_command = recommended_official_pytorch_install_command(
+                pytorch_results, all_validations_passed
+            )
+        else:
+            pip_command = recommended_install_command(
+                preferred_environment,
+                stable_results,
+                nightly_results,
+                all_validations_passed,
+            )
+        print_linux_completion_summary(
+            comparison_file,
+            metrics,
+            len(common_configs),
+            preferred_environment,
+            pip_command,
+        )
+    finally:
+        for requirements_file in temporary_requirements:
+            requirements_file.unlink(missing_ok=True)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -713,6 +1232,10 @@ def main() -> None:
         help="benchmark output mode (default: normal)",
     )
     args = parser.parse_args()
+
+    if IS_LINUX:
+        linux_main(args.mode, parser)
+        return
 
     print(
         f"Package installer: {'uv' if UV_EXECUTABLE is not None else 'pip'}",

@@ -98,6 +98,74 @@ def aggregate_metrics(file1, file2):
     }
 
 
+def aggregate_multi_metrics(files):
+    runs = {}
+    for filepath in files:
+        label = Path(filepath).stem
+        _, benchmarks = parse_file(filepath)
+        runs[label] = _average_by_config(benchmarks)
+
+    common_configs = set.intersection(*(set(metrics) for metrics in runs.values()))
+    if not common_configs:
+        raise ValueError("The input files contain no matching native benchmark configurations.")
+
+    common_configs = sorted(common_configs)
+    metrics = {
+        label: {
+            "by_config": by_config,
+            "total": sum(by_config[config] for config in common_configs),
+            "average": sum(by_config[config] for config in common_configs) / len(common_configs),
+        }
+        for label, by_config in runs.items()
+    }
+    return metrics, common_configs
+
+
+def generate_three_way_markdown(file1, file2, file3):
+    files = (file1, file2, file3)
+    labels = [Path(filepath).stem for filepath in files]
+    packages_by_run = [parse_file(filepath)[0] for filepath in files]
+    metrics, common_configs = aggregate_multi_metrics(files)
+
+    md = [f"# Three-Repository Performance Comparison: {', '.join(Path(path).name for path in files)}\n"]
+    architectures = [read_metadata(filepath, "Architecture") for filepath in files]
+    if any(architectures):
+        md.append("**Architectures:** " + "; ".join(
+            f"{label} `{architecture or 'not recorded'}`"
+            for label, architecture in zip(labels, architectures)
+        ))
+        md.append("")
+
+    all_packages = sorted(set.union(*(set(packages) for packages in packages_by_run)))
+    md.append("## 1. Version Comparison (`pip list`)")
+    md.append("| Package | " + " | ".join(f"`{Path(path).name}`" for path in files) + " |")
+    md.append("| :--- | " + " | ".join(":---:" for _ in files) + " |")
+    for package in all_packages:
+        versions = [f"`{packages.get(package, '*Not present*')}`" for packages in packages_by_run]
+        md.append(f"| **`{package}`** | " + " | ".join(versions) + " |")
+
+    md.append("")
+    md.append("## 2. Matched Native Solver Latencies")
+    md.append("| Benchmark configuration | " + " | ".join(f"{label} (ms)" for label in labels) + " |")
+    md.append("| :--- | " + " | ".join("---:" for _ in files) + " |")
+    all_configs = set.union(*(set(run["by_config"]) for run in metrics.values()))
+    for config in sorted(all_configs):
+        values = [run["by_config"].get(config) for run in metrics.values()]
+        md.append(
+            f"| `{config}` | "
+            + " | ".join(f"{value:.3f}" if value is not None else "Not measured" for value in values)
+            + " |"
+        )
+
+    md.append("")
+    md.append(f"Aggregate metrics use the {len(common_configs)} configurations measured in all three files.")
+    for label, run in metrics.items():
+        md.append(f"* **{label} total / average:** `{run['total']:.3f} ms` / `{run['average']:.3f} ms`")
+    winner = min(metrics, key=lambda label: metrics[label]["average"])
+    md.append(f"* **Lowest average latency:** {winner}")
+    return "\n".join(md)
+
+
 def generate_markdown(file1, file2):
     pkgs1, _ = parse_file(file1)
     pkgs2, _ = parse_file(file2)
@@ -181,13 +249,17 @@ def generate_markdown(file1, file2):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Compare stable and nightly MIOpen benchmark results.")
-    parser.add_argument("stable_file")
-    parser.add_argument("nightly_file")
+    parser = argparse.ArgumentParser(description="Compare MIOpen benchmark result files.")
+    parser.add_argument("result_files", nargs="+")
     parser.add_argument("--output", help="write the report to this Markdown file")
     args = parser.parse_args()
 
-    report = generate_markdown(args.stable_file, args.nightly_file)
+    if len(args.result_files) == 2:
+        report = generate_markdown(*args.result_files)
+    elif len(args.result_files) == 3:
+        report = generate_three_way_markdown(*args.result_files)
+    else:
+        parser.error("provide either two or three benchmark result files")
     if args.output:
         Path(args.output).write_text(report + "\n", encoding="utf-8")
     else:

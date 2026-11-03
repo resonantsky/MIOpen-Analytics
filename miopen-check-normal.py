@@ -1,6 +1,7 @@
 import os
 import operator
 import re
+import sys
 import threading
 import time
 
@@ -86,6 +87,76 @@ class _MIOpenStderrCapture:
         os.close(self.saved_stderr)
         self.reader.join(timeout=2)
         os.close(self.read_fd)
+
+
+IS_LINUX = os.name == "posix" and hasattr(os, "uname") and os.uname().sysname == "Linux"
+if IS_LINUX:
+    class _LinuxMIOpenStderrCapture:
+        def __init__(self):
+            self.lines = []
+            self.read_fd = -1
+            self.saved_stderr = -1
+            self.saved_python_stderr = sys.stderr
+            self.safe_stderr = None
+            self.reader = None
+
+        def __enter__(self):
+            write_fd = -1
+            try:
+                self.read_fd, write_fd = os.pipe()
+                self.saved_stderr = os.dup(2)
+                self.saved_python_stderr = sys.stderr
+                self.safe_stderr = os.fdopen(
+                    os.dup(self.saved_stderr),
+                    "w",
+                    encoding=getattr(sys.stderr, "encoding", None) or "utf-8",
+                    buffering=1,
+                )
+                os.dup2(write_fd, 2)
+                os.close(write_fd)
+                write_fd = -1
+                sys.stderr = self.safe_stderr
+
+                def read_output():
+                    chunks = []
+                    while True:
+                        chunk = os.read(self.read_fd, 4096)
+                        if not chunk:
+                            break
+                        chunks.append(chunk)
+                    self.lines.extend(
+                        b"".join(chunks).decode(errors="replace").splitlines()
+                    )
+
+                self.reader = threading.Thread(target=read_output, daemon=True)
+                self.reader.start()
+                return self
+            except Exception:
+                if write_fd >= 0:
+                    os.close(write_fd)
+                if self.saved_stderr >= 0:
+                    os.dup2(self.saved_stderr, 2)
+                sys.stderr = self.saved_python_stderr
+                if self.safe_stderr is not None:
+                    self.safe_stderr.close()
+                if self.reader is not None:
+                    self.reader.join()
+                if self.saved_stderr >= 0:
+                    os.close(self.saved_stderr)
+                if self.read_fd >= 0:
+                    os.close(self.read_fd)
+                raise
+
+        def __exit__(self, _exc_type, _exc_value, _traceback):
+            os.dup2(self.saved_stderr, 2)
+            sys.stderr = self.saved_python_stderr
+            self.safe_stderr.close()
+            self.reader.join()
+            os.close(self.saved_stderr)
+            os.close(self.read_fd)
+            return False
+
+    _MIOpenStderrCapture = _LinuxMIOpenStderrCapture
 
 
 def _extract_algorithms(lines):
