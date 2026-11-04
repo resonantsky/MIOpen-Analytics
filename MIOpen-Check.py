@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install stable/nightly ROCm environments and compare their MIOpen benchmarks."""
+"""Install PyTorch/nightly ROCm environments and compare their MIOpen benchmarks."""
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -600,14 +600,14 @@ def run_and_tee(command: list[str], output) -> None:
 
 def recommended_install_command(
     environment: str,
-    stable_results: Path,
+    pytorch_results: Path,
     nightly_results: Path,
     torchvision_validated: bool,
 ) -> Optional[str]:
     if not torchvision_validated:
         return None
 
-    results_file = stable_results if environment == "stable" else nightly_results
+    results_file = pytorch_results if environment == "pytorch" else nightly_results
     packages, _ = comparison_generator.parse_file(results_file)
     architecture = comparison_generator.read_metadata(results_file, "Architecture")
     if architecture is None:
@@ -643,7 +643,7 @@ def recommended_install_command(
     if not runtime_packages:
         raise ValueError(f"No ROCm or PyTorch packages found in {results_file}.")
 
-    repositories = REPOSITORIES[environment]
+    repositories = REPOSITORIES["stable" if environment == "pytorch" else environment]
     package_specs = " ".join(
         f"{package}=={version}" for package, version in sorted(runtime_packages.items())
     )
@@ -832,11 +832,11 @@ def print_linux_completion_summary(
     dim = "\033[2m"
     reset = "\033[0m"
     print(f"\n{cyan}{'=' * 78}{reset}")
-    title = (
-        "Stable / nightly / official PyTorch benchmark summary"
-        if len(metrics) == 3
-        else "Stable / nightly benchmark summary (official PyTorch run skipped)"
-    )
+    title = " / ".join(
+        label.removesuffix("-results").title() for label in metrics
+    ) + " benchmark summary"
+    if "pytorch-results" not in metrics:
+        title += " (official PyTorch run skipped)"
     print(f"{cyan}{title}{reset}")
     print(
         f"  {dim}Matched configurations{reset} "
@@ -1107,34 +1107,11 @@ def linux_main(mode: str, parser: argparse.ArgumentParser) -> None:
                 file.write(contents)
                 temporary_requirements.append(Path(file.name))
 
-        stable_constraints = stable_runtime_constraints(architecture)
-        stable_constraints_path: Optional[Path] = None
-        if stable_constraints is not None:
-            with tempfile.NamedTemporaryFile(
-                mode="w",
-                encoding="utf-8",
-                suffix=".txt",
-                prefix="miopen-stable-rocm-10.0-constraints-",
-                dir=ROOT,
-                delete=False,
-            ) as file:
-                file.write(stable_constraints)
-                stable_constraints_path = Path(file.name)
-                temporary_requirements.append(stable_constraints_path)
-            print(f"Pinning stable AMD packages to ROCm 10.0.0 for {architecture}", flush=True)
-
-        stable_python = prepare_environment(
-            "stable",
-            architecture,
-            temporary_requirements[0],
-            temporary_requirements[1],
-            stable_constraints_path,
-        )
         nightly_python = prepare_environment(
             "nightly", architecture, temporary_requirements[0], temporary_requirements[1]
         )
 
-        pytorch_name = f"pytorch-rocm{rocm_release}"
+        pytorch_name = "pytorch"
         pytorch_repositories = {
             "pytorch": PYTORCH_ROCM_REPOSITORIES[rocm_release],
         }
@@ -1149,15 +1126,14 @@ def linux_main(mode: str, parser: argparse.ArgumentParser) -> None:
                 allow_prerelease=True,
             )
 
-        stable_results = run_analysis("stable", architecture, stable_python, mode)
         nightly_results = run_analysis("nightly", architecture, nightly_python, mode)
-        result_files = [stable_results, nightly_results]
+        result_files = [nightly_results]
         pytorch_results = None
         if pytorch_python is not None:
             pytorch_results = run_analysis(
                 pytorch_name, architecture, pytorch_python, mode, pytorch_repositories
             )
-            result_files.append(pytorch_results)
+            result_files.insert(0, pytorch_results)
 
         comparison_file = ROOT / "comparison.md"
         subprocess.run(
@@ -1171,43 +1147,24 @@ def linux_main(mode: str, parser: argparse.ArgumentParser) -> None:
             cwd=ROOT,
             check=True,
         )
-        if pytorch_python is not None:
-            metrics, common_configs = comparison_generator.aggregate_multi_metrics(result_files)
-        else:
-            two_way_metrics = comparison_generator.aggregate_metrics(
-                stable_results, nightly_results
-            )
-            metrics = {
-                "stable": {
-                    "by_config": two_way_metrics["stable_by_config"],
-                    "total": two_way_metrics["stable_total"],
-                    "average": two_way_metrics["stable_average"],
-                },
-                "nightly": {
-                    "by_config": two_way_metrics["nightly_by_config"],
-                    "total": two_way_metrics["nightly_total"],
-                    "average": two_way_metrics["nightly_average"],
-                },
-            }
-            common_configs = two_way_metrics["common_configs"]
+        metrics, common_configs = comparison_generator.aggregate_multi_metrics(result_files)
         validations = {
-            "stable": validate_torchvision_runtime(stable_python, architecture),
             "nightly": validate_torchvision_runtime(nightly_python, architecture),
         }
         if pytorch_python is not None:
             validations[pytorch_name] = validate_pytorch_runtime(pytorch_python)
         print_linux_validation_summary(validations)
         preferred = min(metrics, key=lambda label: metrics[label]["average"])
-        preferred_environment = preferred.rsplit("-results", 1)[0]
+        preferred_environment = preferred.removesuffix("-results")
         all_validations_passed = all(passed for passed, _detail in validations.values())
-        if preferred_environment.startswith("pytorch-rocm"):
+        if preferred_environment == "pytorch":
             pip_command = recommended_official_pytorch_install_command(
                 pytorch_results, all_validations_passed
             )
         else:
             pip_command = recommended_install_command(
                 preferred_environment,
-                stable_results,
+                pytorch_results or nightly_results,
                 nightly_results,
                 all_validations_passed,
             )
@@ -1277,59 +1234,42 @@ def main() -> None:
                 file.write(contents)
                 temporary_requirements.append(Path(file.name))
 
-        stable_constraints = stable_runtime_constraints(architecture)
-        stable_constraints_path: Optional[Path] = None
-        if stable_constraints is not None:
-            with tempfile.NamedTemporaryFile(
-                mode="w",
-                encoding="utf-8",
-                suffix=".txt",
-                prefix="miopen-stable-rocm-10.0-constraints-",
-                dir=ROOT,
-                delete=False,
-            ) as file:
-                file.write(stable_constraints)
-                stable_constraints_path = Path(file.name)
-                temporary_requirements.append(stable_constraints_path)
-            print(
-                f"Pinning stable ROCm packages to 10.0.0 for {architecture}",
-                flush=True,
-            )
-
-        stable_python = prepare_environment(
-            "stable",
+        pytorch_python = prepare_environment(
+            "pytorch",
             architecture,
             temporary_requirements[0],
             temporary_requirements[1],
-            stable_constraints_path,
+            repositories=REPOSITORIES["stable"],
         )
         nightly_python = prepare_environment(
             "nightly", architecture, temporary_requirements[0], temporary_requirements[1]
         )
-        stable_results = run_analysis("stable", architecture, stable_python, args.mode)
+        pytorch_results = run_analysis(
+            "pytorch", architecture, pytorch_python, args.mode, REPOSITORIES["stable"]
+        )
         nightly_results = run_analysis("nightly", architecture, nightly_python, args.mode)
+        result_files = [pytorch_results, nightly_results]
 
         comparison_file = ROOT / "comparison.md"
         subprocess.run(
             [
                 sys.executable,
                 str(ROOT / "comparison_generator.py"),
-                str(stable_results),
-                str(nightly_results),
+                *[str(result_file) for result_file in result_files],
                 "--output",
                 str(comparison_file),
             ],
             cwd=ROOT,
             check=True,
         )
-        metrics = comparison_generator.aggregate_metrics(stable_results, nightly_results)
+        metrics, common_configs = comparison_generator.aggregate_multi_metrics(result_files)
         torchvision_validation = {}
         cyan = "\033[36m"
         reset = "\033[0m"
         print(f"\n{cyan}{'=' * 78}{reset}")
         print(f"{cyan}Torchvision validation{reset}")
         for name, python in (
-            ("stable", stable_python),
+            ("pytorch", pytorch_python),
             ("nightly", nightly_python),
         ):
             passed, detail = validate_torchvision_runtime(python, architecture)
@@ -1341,18 +1281,15 @@ def main() -> None:
                 flush=True,
             )
         print(f"{cyan}{'=' * 78}{reset}", flush=True)
-        preferred = (
-            "stable"
-            if metrics["stable_average"] <= metrics["nightly_average"]
-            else "nightly"
-        )
-        print_completion_summary(
+        preferred = min(metrics, key=lambda label: metrics[label]["average"])
+        print_linux_completion_summary(
             comparison_file,
             metrics,
-            preferred,
+            len(common_configs),
+            preferred.removesuffix("-results"),
             recommended_install_command(
-                preferred,
-                stable_results,
+                preferred.removesuffix("-results"),
+                pytorch_results,
                 nightly_results,
                 all(torchvision_validation.values()),
             ),

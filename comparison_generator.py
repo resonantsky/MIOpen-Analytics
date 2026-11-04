@@ -248,18 +248,56 @@ def generate_markdown(file1, file2):
     return "\n".join(md)
 
 
+def generate_comparison_markdown(files):
+    labels = [Path(filepath).stem for filepath in files]
+    packages_by_run = [parse_file(filepath)[0] for filepath in files]
+    metrics, common_configs = aggregate_multi_metrics(files)
+    md = [f"# MIOpen Performance Comparison: {', '.join(Path(path).name for path in files)}\n"]
+
+    for field in ("Architecture", "Repository"):
+        values = [read_metadata(filepath, field) for filepath in files]
+        if any(values):
+            md.append("**" + field + ":** " + "; ".join(
+                f"{label} `{value or 'not recorded'}`"
+                for label, value in zip(labels, values)
+            ))
+    md.append("")
+
+    all_packages = sorted(set.union(*(set(packages) for packages in packages_by_run)))
+    md.append("## 1. Version Comparison (`pip list`)")
+    md.append("| Package | " + " | ".join(f"`{label}`" for label in labels) + " |")
+    md.append("| :--- | " + " | ".join(":---:" for _ in files) + " |")
+    for package in all_packages:
+        versions = [f"`{packages.get(package, '*Not present*')}`" for packages in packages_by_run]
+        md.append(f"| **`{package}`** | " + " | ".join(versions) + " |")
+
+    md.extend(("", "## 2. Matched Native Solver Latencies"))
+    md.append("| Benchmark configuration | " + " | ".join(f"{label} (ms)" for label in labels) + " |")
+    md.append("| :--- | " + " | ".join("---:" for _ in files) + " |")
+    all_configs = set.union(*(set(run["by_config"]) for run in metrics.values()))
+    for config in sorted(all_configs):
+        values = [run["by_config"].get(config) for run in metrics.values()]
+        formatted = [f"{value:.3f}" if value is not None else "Not measured" for value in values]
+        md.append(f"| `{config}` | " + " | ".join(formatted) + " |")
+
+    md.append("")
+    md.append(f"Aggregate metrics use the {len(common_configs)} configurations measured in every input file.")
+    for label, run in metrics.items():
+        md.append(f"* **{label} total / average:** `{run['total']:.3f} ms` / `{run['average']:.3f} ms`")
+    winner = min(metrics, key=lambda label: metrics[label]["average"])
+    md.append(f"* **Lowest average latency:** {winner}")
+    return "\n".join(md)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Compare MIOpen benchmark result files.")
     parser.add_argument("result_files", nargs="+")
     parser.add_argument("--output", help="write the report to this Markdown file")
     args = parser.parse_args()
 
-    if len(args.result_files) == 2:
-        report = generate_markdown(*args.result_files)
-    elif len(args.result_files) == 3:
-        report = generate_three_way_markdown(*args.result_files)
-    else:
-        parser.error("provide either two or three benchmark result files")
+    if not 1 <= len(args.result_files) <= 3:
+        parser.error("provide one to three benchmark result files")
+    report = generate_comparison_markdown(args.result_files)
     if args.output:
         Path(args.output).write_text(report + "\n", encoding="utf-8")
     else:

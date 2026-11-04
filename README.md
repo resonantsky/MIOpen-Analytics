@@ -6,21 +6,21 @@
 
 Run `python MIOpen-Check.py` and enter a supported GFX architecture.
 
-The runner creates `venv-stable` and `venv-nightly`, installs the requirements from the corresponding AMD repository, runs the normal benchmark in each environment, and writes `stable-results.md`, `nightly-results.md`, and `comparison.md` in the repository root. The result files are Markdown reports with ANSI color codes removed.
+The runner creates `venv-pytorch` and `venv-nightly`, runs the normal benchmark in each environment, and writes `pytorch-results.md`, `nightly-results.md`, and `comparison.md` in the repository root. On Linux, `venv-pytorch` uses the official PyTorch ROCm index; other supported platforms retain AMD's stable index under that environment name.
 
-Shared Python dependencies are installed from PyPI; ROCm and PyTorch packages are resolved independently from each repository's PyTorch and core wheel indexes so their versions match that channel.
+Shared Python dependencies are installed from PyPI. On Linux, the PyTorch environment uses the official PyTorch ROCm wheel index, which mirrors AMD's stable packages; the nightly environment uses AMD's nightly wheel indexes.
 
-For stable runs on gfx1010–gfx1012 and gfx1030–gfx1036, the runner pins Torch and ROCm packages to the available ROCm 10.0.0 builds.
+For gfx1010–gfx1012 and gfx1030–gfx1036, the official PyTorch environment uses the available ROCm 10.0.0 builds.
 
 Nightly runs remain unpinned and install the latest available packages. The benchmark installs torchvision and its architecture-specific AMD package in both environments.
 
 A pip recommendation is shown only when both environments pass torchvision CPU/GPU NMS checks and the selected package inventory includes those matching packages.
 
-Before prompting, the selector checks all architectures against the stable and nightly indexes for the current Python and platform.
+Before prompting, the selector checks all architectures against the official PyTorch and nightly indexes for the current Python and platform.
 
-Benchmark output is streamed to the terminal and recorded in each results file. At completion, the runner prints matched stable/nightly total and average latency and, when torchvision validation succeeds, a pip install command for the lower-average environment.
+Benchmark output is streamed to the terminal and recorded in each results file. At completion, the runner prints matched PyTorch/nightly total and average latency and, when runtime validation succeeds, a pip install command for the lower-average environment.
 
-Use `python MIOpen-Check.py --mode verbose` to capture the verbose benchmark instead. Both environments are installed from the stable and nightly AMD wheel indexes, respectively.
+Use `python MIOpen-Check.py --mode verbose` to capture the verbose benchmark instead. The environments are installed from the official PyTorch and AMD nightly wheel indexes, respectively.
 
 Example output:
 
@@ -33,17 +33,16 @@ Supported architectures:
   gfx12: gfx12-0, gfx1200, gfx1201, gfx1250
   gfx9: gfx900, gfx906, gfx908, gfx90a, gfx90c, gfx942, gfx950
 Checking required AMD package artifacts for Python 3.12 (win-amd64)...
-AMD package availability (stable + nightly):
+AMD package availability (PyTorch + nightly):
   gfx10: gfx1010, gfx1011, gfx1012, gfx1030, gfx1031, gfx1032, gfx1033, gfx1034, gfx1035, gfx1036
   gfx11: gfx1100, gfx1101, gfx1102, gfx1103, gfx110x, gfx1150, gfx1151, gfx1152, gfx1153, gfx115x
   gfx12: gfx12-0, gfx1200, gfx1201, gfx1250
   gfx9: gfx900, gfx906, gfx908, gfx90a, gfx90c, gfx942, gfx950
 Enter the GFX architecture (for example, gfx1030): gfx1030
-Pinning stable ROCm packages to 10.0.0 for gfx1030
-Installing stable requirements for gfx1030
-Using Python 3.12.9 environment at: venv-stable
+Installing pytorch requirements for gfx1030
+Using Python 3.12.9 environment at: venv-pytorch
 Audited 14 packages in 7ms
-Using Python 3.12.9 environment at: venv-stable
+Using Python 3.12.9 environment at: venv-pytorch
 Audited 11 packages in 8ms
 Installing nightly requirements for gfx1030
 Using Python 3.12.9 environment at: venv-nightly
@@ -51,9 +50,9 @@ Audited 14 packages in 7ms
 Using Python 3.12.9 environment at: venv-nightly
 Audited 11 packages in 9ms
 
-Running stable normal benchmark; recording stable-results.md
+Running pytorch normal benchmark; recording pytorch-results.md
 
-=== Stable benchmark output (also saved to stable-results.md) ===
+=== Pytorch benchmark output (also saved to pytorch-results.md) ===
 =======================================================
 
 conv2d ch256-k(3, 3)-d(1, 1)-0
