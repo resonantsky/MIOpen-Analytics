@@ -723,7 +723,7 @@ if not torch.cuda.is_available():
 verify_nms("cuda")
 print(
     f"torch={torch.__version__}, torchvision={torchvision_version}, "
-    f"amd-torchvision-device={device_version}; CPU and GPU NMS passed"
+    "CPU and GPU NMS passed"
 )
 """
     try:
@@ -768,7 +768,7 @@ if torchvision.ops.nms(boxes.cuda(), scores.cuda(), 0.5).tolist() != [0]:
     raise RuntimeError("torchvision GPU NMS returned an unexpected result")
 print(
     f"torch={torch.__version__}, torchvision={torchvision.__version__}, "
-    f"HIP={torch.version.hip}; CPU and GPU NMS passed"
+    "CPU and GPU NMS passed"
 )
 """
     try:
@@ -802,20 +802,12 @@ def print_linux_validation_summary(
     reset = "\033[0m"
     print(f"\n{cyan}{'=' * 78}{reset}")
     print(f"{cyan}Torchvision validation{reset}")
-    for name in ("stable", "nightly"):
-        if name not in validations:
-            continue
-        passed, detail = validations[name]
-        color = green if passed else red
-        status = "PASS" if passed else "FAILED"
-        print(f"{color}Torchvision validation ({name}): {status} - {detail}{reset}")
-
+    labels = {"nightly": "From nightly", "pytorch": "From pytorch", "stable": "From stable"}
     for name, (passed, detail) in validations.items():
-        if name in ("stable", "nightly"):
-            continue
         color = green if passed else red
         status = "PASS" if passed else "FAILED"
-        print(f"{cyan}{name} validation{reset}: {color}{status} - {detail}{reset}")
+        label = labels.get(name, f"From {name.title()}")
+        print(f"{color}{label}: {status} - {detail}{reset}")
     print(f"{cyan}{'=' * 78}{reset}", flush=True)
 
 
