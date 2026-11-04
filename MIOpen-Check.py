@@ -24,6 +24,7 @@ import comparison_generator
 ROOT = Path(__file__).resolve().parent
 REQUIREMENTS = ROOT / "requirements.txt"
 IS_LINUX = os.name == "posix" and hasattr(os, "uname") and os.uname().sysname == "Linux"
+IS_WINDOWS = sys.platform == "win32"
 PYTORCH_ROCM_REPOSITORIES = {
     "10.0": "https://download.pytorch.org/whl/rocm10.0",
     "10.1": "https://download.pytorch.org/whl/rocm10.1",
@@ -607,7 +608,8 @@ def recommended_install_command(
     if not torchvision_validated:
         return None
 
-    results_file = pytorch_results if environment == "pytorch" else nightly_results
+    uses_stable_repository = environment in ("pytorch", "stable")
+    results_file = pytorch_results if uses_stable_repository else nightly_results
     packages, _ = comparison_generator.parse_file(results_file)
     architecture = comparison_generator.read_metadata(results_file, "Architecture")
     if architecture is None:
@@ -643,7 +645,7 @@ def recommended_install_command(
     if not runtime_packages:
         raise ValueError(f"No ROCm or PyTorch packages found in {results_file}.")
 
-    repositories = REPOSITORIES["stable" if environment == "pytorch" else environment]
+    repositories = REPOSITORIES["stable" if uses_stable_repository else environment]
     package_specs = " ".join(
         f"{package}=={version}" for package, version in sorted(runtime_packages.items())
     )
@@ -674,7 +676,7 @@ def recommended_official_pytorch_install_command(
     if repository not in PYTORCH_ROCM_REPOSITORIES.values():
         return None
 
-    install_packages = list(required_packages)
+    install_packages: list[str] = list(required_packages)
     if packages.get("torchaudio") and packages["torchaudio"].lower() != "none":
         install_packages.append("torchaudio")
     install_packages.extend(
@@ -793,7 +795,7 @@ print(
     return True, result.stdout.strip()
 
 
-def print_linux_validation_summary(
+def print_torchvision_validation_summary(
     validations: Mapping[str, Tuple[bool, str]],
 ) -> None:
     cyan = "\033[36m"
@@ -1070,7 +1072,7 @@ def linux_main(mode: str, parser: argparse.ArgumentParser) -> None:
                 f"{', '.join(unavailable_optional)}.\033[0m",
                 flush=True,
             )
-        pytorch_packages = list(PYTORCH_ROCM_REQUIRED_PACKAGES)
+        pytorch_packages: list[str] = list(PYTORCH_ROCM_REQUIRED_PACKAGES)
         pytorch_packages.extend(
             package
             for package in PYTORCH_ROCM_OPTIONAL_PACKAGES
@@ -1145,11 +1147,16 @@ def linux_main(mode: str, parser: argparse.ArgumentParser) -> None:
         }
         if pytorch_python is not None:
             validations[pytorch_name] = validate_pytorch_runtime(pytorch_python)
-        print_linux_validation_summary(validations)
+        print_torchvision_validation_summary(validations)
         preferred = min(metrics, key=lambda label: metrics[label]["average"])
         preferred_environment = preferred.removesuffix("-results")
         all_validations_passed = all(passed for passed, _detail in validations.values())
         if preferred_environment == "pytorch":
+            if pytorch_results is None:
+                raise RuntimeError(
+                    "Official PyTorch benchmark results are missing despite a "
+                    "completed PyTorch environment."
+                )
             pip_command = recommended_official_pytorch_install_command(
                 pytorch_results, all_validations_passed
             )
@@ -1185,6 +1192,8 @@ def main() -> None:
     if IS_LINUX:
         linux_main(args.mode, parser)
         return
+    if not IS_WINDOWS:
+        parser.error("This script supports Linux and Windows only.")
 
     print(
         f"Package installer: {'uv' if UV_EXECUTABLE is not None else 'pip'}",
@@ -1226,21 +1235,43 @@ def main() -> None:
                 file.write(contents)
                 temporary_requirements.append(Path(file.name))
 
-        pytorch_python = prepare_environment(
-            "pytorch",
+        stable_constraints_path: Optional[Path] = None
+        if IS_WINDOWS:
+            stable_constraints = stable_runtime_constraints(architecture)
+            if stable_constraints is not None:
+                with tempfile.NamedTemporaryFile(
+                    mode="w",
+                    encoding="utf-8",
+                    suffix=".txt",
+                    prefix="miopen-stable-rocm-10.0-constraints-",
+                    dir=ROOT,
+                    delete=False,
+                ) as file:
+                    file.write(stable_constraints)
+                    stable_constraints_path = Path(file.name)
+                    temporary_requirements.append(stable_constraints_path)
+                print(
+                    f"Pinning stable ROCm packages to 10.0.0 for {architecture}",
+                    flush=True,
+                )
+
+        stable_name = "stable"
+        stable_python = prepare_environment(
+            stable_name,
             architecture,
             temporary_requirements[0],
             temporary_requirements[1],
+            stable_constraints_path,
             repositories=REPOSITORIES["stable"],
         )
         nightly_python = prepare_environment(
             "nightly", architecture, temporary_requirements[0], temporary_requirements[1]
         )
-        pytorch_results = run_analysis(
-            "pytorch", architecture, pytorch_python, args.mode, REPOSITORIES["stable"]
+        stable_results = run_analysis(
+            stable_name, architecture, stable_python, args.mode, REPOSITORIES["stable"]
         )
         nightly_results = run_analysis("nightly", architecture, nightly_python, args.mode)
-        result_files = [pytorch_results, nightly_results]
+        result_files = [stable_results, nightly_results]
 
         comparison_file = ROOT / "comparison.md"
         subprocess.run(
@@ -1254,36 +1285,34 @@ def main() -> None:
             cwd=ROOT,
             check=True,
         )
-        metrics, common_configs = comparison_generator.aggregate_multi_metrics(result_files)
         torchvision_validation = {}
-        cyan = "\033[36m"
-        reset = "\033[0m"
-        print(f"\n{cyan}{'=' * 78}{reset}")
-        print(f"{cyan}Torchvision validation{reset}")
         for name, python in (
-            ("pytorch", pytorch_python),
+            (stable_name, stable_python),
             ("nightly", nightly_python),
         ):
             passed, detail = validate_torchvision_runtime(python, architecture)
-            torchvision_validation[name] = passed
-            status_color = "\033[92m" if passed else "\033[91m"
-            print(
-                f"{status_color}Torchvision validation ({name}): "
-                f"{'PASS' if passed else 'FAILED'} - {detail}\033[0m",
-                flush=True,
-            )
-        print(f"{cyan}{'=' * 78}{reset}", flush=True)
-        preferred = min(metrics, key=lambda label: metrics[label]["average"])
-        print_linux_completion_summary(
+            torchvision_validation[name] = (passed, detail)
+        print_torchvision_validation_summary(torchvision_validation)
+        validation_passed = all(
+            passed for passed, _detail in torchvision_validation.values()
+        )
+        metrics = comparison_generator.aggregate_metrics(
+            stable_results, nightly_results
+        )
+        preferred = (
+            "stable"
+            if metrics["stable_average"] <= metrics["nightly_average"]
+            else "nightly"
+        )
+        print_completion_summary(
             comparison_file,
             metrics,
-            len(common_configs),
-            preferred.removesuffix("-results"),
+            preferred,
             recommended_install_command(
-                preferred.removesuffix("-results"),
-                pytorch_results,
+                preferred,
+                stable_results,
                 nightly_results,
-                all(torchvision_validation.values()),
+                validation_passed,
             ),
         )
     finally:
