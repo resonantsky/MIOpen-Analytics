@@ -29,6 +29,8 @@ PYTORCH_ROCM_REPOSITORIES = {
     "10.0": "https://download.pytorch.org/whl/rocm10.0",
     "10.1": "https://download.pytorch.org/whl/rocm10.1",
 }
+PYPI_SIMPLE_INDEX = "https://pypi.org/simple"
+TRITON_COMPATIBLE_VERSION = (3, 8, 0)
 PYTORCH_ROCM_REQUIRED_PACKAGES = ("torch", "torchvision")
 PYTORCH_ROCM_OPTIONAL_PACKAGES = ("torchaudio",)
 PYTORCH_ROCM_PACKAGES = PYTORCH_ROCM_REQUIRED_PACKAGES + PYTORCH_ROCM_OPTIONAL_PACKAGES
@@ -271,6 +273,98 @@ def _probe_package_artifact(
         )
         return WheelProbe(True, detail, tuple(sorted(versions)))
     return WheelProbe(False, "no compatible wheel published for this Python/platform")
+
+
+def _triton_package_source(channel: str, architecture: str) -> str:
+    if IS_WINDOWS:
+        return PYPI_SIMPLE_INDEX
+    if channel == "pytorch":
+        return PYTORCH_ROCM_REPOSITORIES[pytorch_rocm_release(architecture)]
+    if channel.startswith("pytorch-rocm"):
+        release = channel.removeprefix("pytorch-rocm")
+        return PYTORCH_ROCM_REPOSITORIES[release]
+    return REPOSITORIES[channel]["pytorch"]
+
+
+def _triton_package_name(channel: str) -> str:
+    if IS_WINDOWS:
+        return "triton-windows"
+    if channel == "pytorch" or channel.startswith("pytorch-rocm"):
+        return "triton-rocm"
+    return "triton"
+
+
+def probe_triton_compatibility(
+    architecture: str,
+) -> Dict[str, Tuple[str, str, WheelProbe]]:
+    if not architecture.startswith(("gfx101", "gfx103")):
+        return {}
+
+    if IS_WINDOWS:
+        package_sources = {"windows": ("triton-windows", PYPI_SIMPLE_INDEX)}
+    else:
+        package_sources = {
+            channel: (
+                _triton_package_name(channel),
+                _triton_package_source(channel, architecture),
+            )
+            for channel in ("nightly", "pytorch")
+        }
+    unique_queries = set(package_sources.values())
+    with ThreadPoolExecutor(max_workers=min(4, len(unique_queries))) as executor:
+        futures = {
+            query: executor.submit(_probe_package_artifact, query[1], query[0], None)
+            for query in unique_queries
+        }
+        query_probes = {query: future.result() for query, future in futures.items()}
+
+    return {
+        channel: (package, source, query_probes[(package, source)])
+        for channel, (package, source) in package_sources.items()
+    }
+
+
+def _triton_version_key(
+    version: str,
+) -> Optional[Tuple[int, int, int, int, Tuple[str, ...]]]:
+    match = re.match(
+        r"^(\d+)\.(\d+)\.(\d+)(?:\.post(\d+))?(?:\+([A-Za-z0-9.-]+))?$",
+        version,
+    )
+    if match is None:
+        return None
+    major, minor, patch, post, local = match.groups()
+    local_parts = tuple(
+        f"1{len(str(int(part))):06d}{int(part)}"
+        if part.isdigit()
+        else f"0{part.lower()}"
+        for part in re.split(r"[._-]", local or "")
+        if part
+    )
+    return int(major), int(minor), int(patch), int(post or 0), local_parts
+
+
+def _latest_triton_version(versions: Tuple[str, ...]) -> Optional[str]:
+    candidates = []
+    for version in versions:
+        key = _triton_version_key(version)
+        if key is not None:
+            candidates.append((version, key))
+    if not candidates:
+        return None
+    return max(candidates, key=lambda candidate: candidate[1])[0]
+
+
+def _latest_compatible_triton_version(
+    versions: Tuple[str, ...],
+) -> Optional[str]:
+    candidates = [
+        version
+        for version in versions
+        if (key := _triton_version_key(version)) is not None
+        and key[:3] == TRITON_COMPATIBLE_VERSION
+    ]
+    return _latest_triton_version(tuple(candidates))
 
 
 def check_architecture_wheels() -> Dict[str, Dict[Tuple[str, str], WheelProbe]]:
@@ -797,10 +891,13 @@ print(
 
 def print_torchvision_validation_summary(
     validations: Mapping[str, Tuple[bool, str]],
+    architecture: str,
+    triton_probes: Mapping[str, Tuple[str, str, WheelProbe]],
 ) -> None:
     cyan = "\033[36m"
     green = "\033[92m"
     red = "\033[91m"
+    yellow = "\033[93m"
     reset = "\033[0m"
     print(f"\n{cyan}{'=' * 78}{reset}")
     print(f"{cyan}Torchvision validation{reset}")
@@ -810,6 +907,51 @@ def print_torchvision_validation_summary(
         status = "PASS" if passed else "FAILED"
         label = labels.get(name, f"From {name.title()}")
         print(f"{color}{label}: {status} - {detail}{reset}")
+    if architecture.startswith(("gfx101", "gfx103")):
+        print(f"{cyan}Triton Compatibility{reset}")
+        print(
+            f"{yellow}Note: {architecture} is an older architecture being "
+            f"deprecated by newer Triton releases. Triton 3.9.0 is incompatible; "
+            f"use Triton 3.8.0.{reset}"
+        )
+        for channel, (triton_package, source, probe) in triton_probes.items():
+            if probe.available is None:
+                print(
+                    f"{yellow}Triton version check failed for "
+                    f"{triton_package}: {probe.detail}{reset}"
+                )
+            elif not probe.versions:
+                print(
+                    f"{yellow}No compatible {triton_package} wheel found: "
+                    f"{probe.detail}{reset}"
+                )
+            else:
+                compatible = _latest_compatible_triton_version(probe.versions)
+                if compatible is None:
+                    print(
+                        f"{yellow}No compatible {triton_package} 3.8.0 version "
+                        f"found; available versions: "
+                        f"{', '.join(probe.versions)}{reset}"
+                    )
+                elif IS_WINDOWS:
+                    install_spec = f"{triton_package}==3.8.0.*"
+                    command = (
+                        f'python -m pip install --upgrade --pre --index-url '
+                        f'{source} "{install_spec}"'
+                    )
+                    print(
+                        f"{yellow}Recommended for gfx1010-gfx1036: "
+                        f"{command}{reset}"
+                    )
+                else:
+                    label = labels.get(channel, f"From {channel.title()}")
+                    command = (
+                        f"python -m pip install --upgrade --pre --index-url "
+                        f"{source} {triton_package}=={compatible}"
+                    )
+                    print(
+                        f"{yellow}{label} recommendation: {command}{reset}"
+                    )
     print(f"{cyan}{'=' * 78}{reset}", flush=True)
 
 
@@ -1147,7 +1289,10 @@ def linux_main(mode: str, parser: argparse.ArgumentParser) -> None:
         }
         if pytorch_python is not None:
             validations[pytorch_name] = validate_pytorch_runtime(pytorch_python)
-        print_torchvision_validation_summary(validations)
+        triton_probes = probe_triton_compatibility(architecture)
+        print_torchvision_validation_summary(
+            validations, architecture, triton_probes
+        )
         preferred = min(metrics, key=lambda label: metrics[label]["average"])
         preferred_environment = preferred.removesuffix("-results")
         all_validations_passed = all(passed for passed, _detail in validations.values())
@@ -1292,7 +1437,10 @@ def main() -> None:
         ):
             passed, detail = validate_torchvision_runtime(python, architecture)
             torchvision_validation[name] = (passed, detail)
-        print_torchvision_validation_summary(torchvision_validation)
+        triton_probes = probe_triton_compatibility(architecture)
+        print_torchvision_validation_summary(
+            torchvision_validation, architecture, triton_probes
+        )
         validation_passed = all(
             passed for passed, _detail in torchvision_validation.values()
         )
